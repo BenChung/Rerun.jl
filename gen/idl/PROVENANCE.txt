@@ -1,0 +1,6 @@
+Rerun IDL (FlatBuffers) definitions vendored for schema codegen.
+Source: rerun crates/store/re_sdk_types/definitions  (+ re_types_builder/definitions/reflection.fbs)
+Rerun SDK version: 0.33.0
+Regenerate src schemas with: julia --project=gen gen/gen_schemas.jl
+
+Definitions are licensed under Apache 2.0 - https://github.com/rerun-io/rerun/blob/main/LICENSE-APACHE and are copyright the original Rerun project.

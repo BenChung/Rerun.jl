@@ -1,0 +1,17 @@
+name = "Rerun"
+uuid = "1f49d09d-ceb1-46d4-a7f5-ca2a56fa37fd"
+version = "0.1.0"
+authors = ["Benjamin Chung <ckfinite@gmail.com>"]
+
+[deps]
+CEnum = "fa961155-64e5-5f13-b03f-caf6b980ea82"
+librerun_c_jll = "1148ce26-83e7-5eb1-970b-19db2de75e6d"
+
+[compat]
+CEnum = "0.5.0"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
