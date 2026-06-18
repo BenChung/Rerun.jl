@@ -32,7 +32,9 @@ using GeometryBasics
 # ext is active so the point batches below reinterpret zero-copy.
 using StaticArrays
 
-using Rerun.Components: Position2D, Position3D, HalfSize2D, HalfSize3D,
+# `import` (not `using`): HalfSize2D/HalfSize3D/Translation3D constructors are
+# extended below, so importing them makes that unambiguous (no Julia 1.12 warning).
+import Rerun.Components: Position2D, Position3D, HalfSize2D, HalfSize3D,
     Translation3D, TriangleIndices, Vector3D, LineStrip2D, LineStrip3D, Radius
 using Rerun.Archetypes: Boxes2D, Boxes3D, LineStrips2D, LineStrips3D, Mesh3D,
     Ellipsoids3D

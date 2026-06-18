@@ -31,8 +31,9 @@ using Rerun
 using StaticArrays
 
 # Pull in the concrete component types we target. These are OWNED by Rerun, so
-# adding constructor methods to them is not piracy.
-using Rerun.Components: Position2D, Position3D, TransformMat3x3
+# adding constructor methods to them is not piracy. `import` (not `using`) so
+# extending their constructors is unambiguous (no Julia 1.12 deprecation warning).
+import Rerun.Components: Position2D, Position3D, TransformMat3x3
 
 # ---------------------------------------------------------------------------
 # Layout invariants (checked at precompile time, not the hot path).

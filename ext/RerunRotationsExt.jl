@@ -30,8 +30,10 @@ using Rerun
 using Rotations
 
 # Rerun-owned target types. Adding constructor methods to these is not piracy.
-using Rerun.Components: RotationQuat, TransformMat3x3
-using Rerun.Archetypes: Transform3D
+# `import` (not `using`) so extending their constructors is unambiguous (no Julia
+# 1.12 deprecation warning).
+import Rerun.Components: RotationQuat, TransformMat3x3
+import Rerun.Archetypes: Transform3D
 
 # ---------------------------------------------------------------------------
 # Layout invariants (checked at precompile time, off the hot path). These

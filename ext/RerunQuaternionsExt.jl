@@ -35,8 +35,9 @@ using Rerun
 using Quaternions
 
 # `RotationQuat` is OWNED by Rerun, so adding constructor methods to it is not
-# piracy.
-using Rerun.Components: RotationQuat
+# piracy. `import` (not `using`) so extending its constructor is unambiguous
+# (no Julia 1.12 deprecation warning).
+import Rerun.Components: RotationQuat
 
 # ---------------------------------------------------------------------------
 # Layout invariant (checked at precompile time, not the hot path). Documents the
