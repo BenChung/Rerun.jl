@@ -1,0 +1,51 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+
+# Documenter pushes the built site to the `gh-pages` branch using GITHUB_TOKEN,
+# so the job needs write access to repo contents. (PRs only build — no deploy —
+# so a read-only fork token is fine there.)
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+
+# Avoid overlapping deploys racing on gh-pages.
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'          # latest Julia 1.x (package requires >= 1.9)
+
+      - uses: julia-actions/cache@v2
+
+      # NOTE: librerun_c_jll is not yet in a public registry, so this instantiate
+      # will fail on a clean runner until the JLL is published / added to a
+      # registry the runner can reach, or vendored into the repo and dev-ed here,
+      # e.g.  Pkg.develop(PackageSpec(path = "deps/librerun_c_jll")).
+      - name: Instantiate docs environment
+        run: |
+          julia --project=docs -e 'using Pkg; Pkg.develop(PackageSpec(path = pwd())); Pkg.instantiate()'
+
+      # docs/make.jl generates the example pages, runs makedocs, and calls
+      # deploydocs (which only deploys on pushes to `main`/tags, not on PRs).
+      - name: Build and deploy documentation
+        run: julia --project=docs docs/make.jl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}   # optional: SSH deploy key alternative to GITHUB_TOKEN
+          JULIA_DEBUG: Documenter

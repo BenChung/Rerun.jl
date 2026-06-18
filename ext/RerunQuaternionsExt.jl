@@ -22,7 +22,7 @@
 #            because of (a).
 #      Because of (a), reinterpret would be wrong for EVERY eltype, so there is
 #      no zero-copy fast path at all — we always materialize a fresh
-#      `Vector{RotationQuat}`. Documented; not zero-copy.
+#      `Vector{RotationQuat}`.
 #
 #   3. BARE-VECTOR SUGAR. A bare `Vector{<:Quaternion}` is unambiguous (a
 #      quaternion is a rotation), so `Rerun.log(rec, path, qs)` maps to a

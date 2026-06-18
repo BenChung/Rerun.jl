@@ -41,8 +41,8 @@ end
 
 Log one or more materialized component batches as a single row, e.g.
 `log(rec, "p", points)` or `log(rec, "p", points, colors)`. Each batch's
-component identity comes from its element type, so there are no kwargs and no
-strings on this path — it's fully type-specialized and zero-copy.
+component identity comes from its element type, making this path fully
+type-specialized and zero-copy.
 """
 # Wire payload of a component batch (applied in `_build_component_array`). Flat
 # components are already wire-shaped, so this is the identity (keeps the
@@ -67,7 +67,7 @@ end
 
 Log one or more materialized component batches as a single row, e.g.
 `log(rec, "p", points)` or `log(rec, "p", points, colors)`. Identity comes from
-each batch's element type — no strings, no kwargs, zero-copy.
+each batch's element type, making the call type-specialized and zero-copy.
 """
 log
 

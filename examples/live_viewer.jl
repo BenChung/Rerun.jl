@@ -1,4 +1,4 @@
-# Drive a live Rerun viewer over gRPC — the sink API (#4).
+# Drive a live Rerun viewer over gRPC via the sink API.
 #
 #   julia --project=. examples/live_viewer.jl                       # spawn a local viewer
 #   RERUN_URL=rerun+http://192.168.0.25:9876/proxy julia --project=. examples/live_viewer.jl

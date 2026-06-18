@@ -8,7 +8,7 @@
 #      ColorTypes. We never define a method whose function AND all argument
 #      types are foreign.
 #
-#   2. NOT ZERO-COPY. Rerun's `Color` is a single `UInt32` packed as
+#   2. ALWAYS COPIES. Rerun's `Color` is a single `UInt32` packed as
 #      `0xRRGGBBAA` (red in the most-significant byte). A `Colorant` is laid out
 #      per channel (and channel ORDER varies: RGBA vs ARGB vs BGRA vs ...), in a
 #      variety of eltypes (`N0f8`, `Float32`, `Float64`, ...). There is no eltype
@@ -26,19 +26,18 @@
 #   4. SCOPE = RGB-FAMILY + GRAY. `red/green/blue` are only defined on
 #      `AbstractRGB`, and `gray` only on `AbstractGray`. We dispatch on exactly
 #      those (and their transparent variants). Non-RGB color spaces (HSV, Lab,
-#      ...) need Colors.jl to convert to RGB and are deliberately NOT handled
-#      here — ColorTypes.jl alone cannot convert them, and silently picking
-#      wrong channels would be worse than a clear MethodError. A user converts
-#      `convert(RGB, c)` first.
+#      ...) require a prior `convert(RGB, c)` via Colors.jl, because ColorTypes.jl
+#      alone cannot convert them. Restricting dispatch to RGB-family and gray
+#      raises a clear MethodError on an unconvertible color space.
 module RerunColorTypesExt
 
 using Rerun
 using ColorTypes
 
 # `Color` is OWNED by Rerun, so adding constructor methods to it is not piracy.
-# Use `import` (not `using ... :`) because we EXTEND the `Color` constructor:
-# on Julia 1.12 extending a name brought in by `using` warns/deprecates, while
-# an explicit `import` is the sanctioned form. This also wins the name-collision
+# `import` is the sanctioned form for extending a name: on Julia 1.12,
+# extending the `Color` constructor when it is brought in by `using` warns and
+# deprecates. `import Rerun.Components: Color` also resolves the name-collision
 # with `ColorTypes.Color` (an abstract type we never reference directly).
 import Rerun.Components: Color
 

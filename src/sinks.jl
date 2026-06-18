@@ -1,7 +1,7 @@
 # Log sinks: the `rr_log_sink` tagged union (gRPC or file) + `set_sinks`.
 #
-# Unlike the single-sink shortcuts (`save`, `connect_grpc`), `set_sinks` attaches
-# several sinks at once (and drops any previously active ones).
+# `set_sinks` attaches several sinks at once and drops any previously active ones;
+# `save` and `connect_grpc` are single-sink shortcuts.
 
 abstract type LogSink end
 

@@ -99,8 +99,7 @@ end
     @test isfile(out) && filesize(out) > 0
 
     # assembled fixed-size-list child (the RotationAxisAngle `axis` field): [validity]
-    # + 1 child of n*3 f32 (no offsets). Previously errored "assembled export not
-    # implemented for ArrowFixedList"; also fixes Boxes3D rotation_axis_angles.
+    # + 1 child of n*3 f32 (no offsets).
     aa = Rerun.COMPONENT_TYPES["rerun.components.RotationAxisAngle"]
     @test any(f -> f.type isa Rerun.ArrowFixedList && f.type.n == 3, aa.fields)
 
@@ -127,7 +126,7 @@ end
         ["rerun.components.Scalar" => Float64.(1:10)])
     Rerun.send_columns(rec, "pc", ["frame" => 0:49],
         [Position3D => pts, Color => [Color(0xff00ffff) for _ in 1:50]])
-    # typed carrier columns (Text/Blob) must work like `log`, not crash (#2)
+    # typed carrier columns (Text/Blob) must work like `log`
     Rerun.send_columns(rec, "names", ["frame" => 0:2],
         [Text => [Text("a"), Text("bb"), Text("ccc")]])                 # mono carrier
     Rerun.send_columns(rec, "tags", ["frame" => 0:1],
@@ -209,8 +208,7 @@ end
     td = Rerun._tensordata(Float32[1 2 3; 4 5 6], nothing)
     @test td.shape == UInt64[2, 3]
     @test td.buffer == (:F32 => Float32[1, 2, 3, 4, 5, 6])           # tagged variant + row-major reorder
-    # empty / zero-extent arrays resolve by eltype, not value (previously crashed
-    # with an ambiguous-union error, #5)
+    # empty / zero-extent arrays resolve their union variant by eltype
     @test Rerun._tensordata(Float32[], nothing).buffer == (:F32 => Float32[])
     @test Rerun._tensordata(Array{UInt8}(undef, 0, 5), nothing).buffer == (:U8 => UInt8[])
 end

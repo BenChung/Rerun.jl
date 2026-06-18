@@ -120,8 +120,8 @@ end
 #
 # Per-point Float32 conversion goes through `_strip3d`/`_strip2d`; this COPIES
 # the points into the LineStrip wire layout (Vector{NTuple{N,Float32}}). Not
-# zero-copy (the strip component owns its own Vector). Interior rings of a
-# Polygon are NOT logged (documented in the module/skip notes).
+# zero-copy (the strip component owns its own Vector). Only a
+# Polygon's exterior ring is logged; interior rings (holes) are dropped.
 # ===========================================================================
 
 # --- coordinate extraction (version-robust): get a Vector of Points. ---
@@ -142,7 +142,6 @@ end
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
                    poly::GeometryBasics.Polygon; inject_time::Bool=true)
     pts = _points(poly)
-    # Close the ring if it is not already closed.
     if !isempty(pts) && first(pts) != last(pts)
         pts = vcat(pts, [first(pts)])
     end
@@ -249,6 +248,6 @@ end
 # `Cylinder` is a flat-capped cylinder (origin/extremity + radius), whereas Rerun
 # `Capsules3D` describes hemispherical-capped capsules (length + radius along an
 # axis with a translation/rotation). The geometry does not match, so emitting a
-# Capsule would misrepresent the shape. Skipped — see the skip notes.
+# Capsule would misrepresent the shape, so this mapping is omitted.
 
 end # module RerunGeometryBasicsExt

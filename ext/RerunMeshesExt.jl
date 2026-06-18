@@ -258,7 +258,7 @@ Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, m::Meshes.Simpl
 # HALF-SIZE (NOT min/max, NOT full size). THE GOTCHA:
 #   center    = (min + max) / 2
 #   half_size = (max - min) / 2
-# CONVERTS (copies) to Float32. (2D boxes are skipped — see notes.)
+# CONVERTS (copies) to Float32. The `Rerun.log` method below rejects non-3D boxes.
 # ===========================================================================
 
 function _box_center_halfsize(b::Meshes.Box)

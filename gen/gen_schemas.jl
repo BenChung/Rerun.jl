@@ -50,9 +50,9 @@ has_attr(o, key) = haskey(o, :attributes) && any(a -> String(a.key) == key, o.at
 # A table is Arrow-transparent — its wrapper layer is erased, leaving the inner
 # field's type — if it carries `attr.arrow.transparent` OR the bare `transparent`
 # attribute (declared in attributes/fbs.fbs; used by the TensorBuffer `*Buffer`
-# datatypes). Without the bare-`transparent` case, each TensorBuffer union arm is
-# wrongly wrapped in `Struct{data: List<T>}` instead of the bare `List<T>` that
-# rerun_c expects, so TensorData/Tensor/BarChart silently fail to log.
+# datatypes, whose union arms must resolve to the bare `List<T>` rerun_c expects
+# rather than a `Struct{data: List<T>}` wrapper, so TensorData/Tensor/BarChart log
+# correctly).
 _is_transparent(o) = has_attr(o, "attr.arrow.transparent") || has_attr(o, "transparent")
 
 function kind_of(fqname::AbstractString)

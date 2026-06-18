@@ -41,12 +41,10 @@ using Rerun
 using CoordinateTransformations
 using Rerun.Components: Translation3D, TransformMat3x3
 
-# This extension triggers on CoordinateTransformations ALONE (its [extensions]
-# value is the single package "CoordinateTransformations"). Rotations is listed in
-# [weakdeps] as an OPTIONAL companion so the rotation->quaternion delegation works
-# when present, while the generic mat3x3 fallback still works when it is absent.
-# We detect Rotations at RUN TIME (it may be loaded after this extension); we only
-# look up an ALREADY-loaded module, never triggering a load.
+# Detect Rotations at RUN TIME (it may be loaded after this extension) by looking
+# up an already-loaded module, never triggering a load. Rotations is an OPTIONAL
+# weakdep: when present, rotation->quaternion delegation applies; when absent, the
+# generic mat3x3 fallback handles the linear part.
 const _ROTATIONS_PKGID = Base.PkgId(
     Base.UUID("6038ab10-8711-5258-84ad-4b1120ba62dc"), "Rotations")
 

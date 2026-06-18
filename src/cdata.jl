@@ -5,7 +5,7 @@
 # fixed-size-list-of-primitive component layouts. Only small C bookkeeping
 # (the buffers/children pointer arrays and child structs) is malloc'd.
 #
-# Ownership / lifetime (validated empirically):
+# Ownership / lifetime:
 #   * `rr_register_component_type` releases the schema synchronously on the
 #     calling thread -> the schema release callback just frees its malloc'd C
 #     memory (it references no Julia data).

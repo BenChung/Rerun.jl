@@ -110,11 +110,11 @@ end
 # `Vector{<:StaticVector{2,Float32}}`  -> Position2D (zero-copy)
 # Float64 / non-contiguous variants    -> convert to Float32 (copies)
 #
-# NOTE: this GENERIC `StaticVector` method is also what makes GeometryBasics'
+# This GENERIC `StaticVector` method is also what makes GeometryBasics'
 # `Point{N,Float32}` log as positions zero-copy, because GeometryBasics.Point
-# <: StaticArrays.StaticVector. See the responsibility split in the task notes:
-# StaticArrays owns the StaticVector->Position/Vec mapping; GeometryBasics owns
-# only its non-StaticVector types (Rect/Mesh/LineString/Polygon).
+# <: StaticArrays.StaticVector. The responsibility split: StaticArrays owns the
+# StaticVector->Position/Vec mapping; GeometryBasics owns only its
+# non-StaticVector types (Rect/Mesh/LineString/Polygon).
 # ===========================================================================
 
 # 3-vectors -> Position3D

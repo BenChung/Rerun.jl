@@ -244,9 +244,9 @@ function _handle(archetype::AbstractString, component::AbstractString,
         # (null_count>0) against the same registered schema.
         schema = _build_schema(t, last(split(component_type, '.')), true)
         # rerun takes ownership of the schema and releases it (freeing the malloc'd
-        # format/name/children) on BOTH success AND failure — verified empirically: a
-        # forced ARROW_FFI_SCHEMA_IMPORT_ERROR still fires the schema release callback.
-        # So do NOT add a Julia-side cleanup on the throwing path; it would double-free.
+        # format/name/children) on both success and failure, including the
+        # ARROW_FFI_SCHEMA_IMPORT_ERROR path. A Julia-side cleanup on the throwing
+        # path would double-free, so there is none.
         a = String(archetype); c = String(component); ct = String(component_type)
         h = GC.@preserve a c ct begin
             desc = LibRerunC.rr_component_descriptor(_rrstr(a), _rrstr(c), _rrstr(ct))
