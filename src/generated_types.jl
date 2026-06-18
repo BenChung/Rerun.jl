@@ -5,7 +5,7 @@
 # e.g. ViewCoordinates is both). Use `using Rerun.Components` / `Rerun.Archetypes`.
 
 module Components
-import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref, ..LibRerunC
+import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref, ..LibRerunC, .._payload, .._unwrap
     const _AT_AlbedoFactor = COMPONENT_TYPES["rerun.components.AlbedoFactor"]
     const _HR_AlbedoFactor = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
     struct AlbedoFactor <: Component
@@ -25,6 +25,17 @@ import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref
     arrowtype(::Type{AxisLength}) = _AT_AxisLength
     handleref(::Type{AxisLength}) = _HR_AxisLength
     export AxisLength
+
+    const _AT_Blob = COMPONENT_TYPES["rerun.components.Blob"]
+    const _HR_Blob = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct Blob <: Component
+        value::Vector{UInt8}
+    end
+    componenttype(::Type{Blob}) = "rerun.components.Blob"
+    arrowtype(::Type{Blob}) = _AT_Blob
+    handleref(::Type{Blob}) = _HR_Blob
+    _payload(::Type{Blob}, v) = _unwrap(v, :value)
+    export Blob
 
     const _AT_CellSize = COMPONENT_TYPES["rerun.components.CellSize"]
     const _HR_CellSize = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
@@ -96,6 +107,18 @@ import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref
     handleref(::Type{DrawOrder}) = _HR_DrawOrder
     export DrawOrder
 
+    const _AT_EntityPath = COMPONENT_TYPES["rerun.components.EntityPath"]
+    const _HR_EntityPath = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct EntityPath <: Component
+        value::String
+    end
+    EntityPath(v::AbstractString) = EntityPath(String(v))
+    componenttype(::Type{EntityPath}) = "rerun.components.EntityPath"
+    arrowtype(::Type{EntityPath}) = _AT_EntityPath
+    handleref(::Type{EntityPath}) = _HR_EntityPath
+    _payload(::Type{EntityPath}, v) = _unwrap(v, :value)
+    export EntityPath
+
     const _AT_FillRatio = COMPONENT_TYPES["rerun.components.FillRatio"]
     const _HR_FillRatio = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
     struct FillRatio <: Component
@@ -116,6 +139,29 @@ import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref
     handleref(::Type{GammaCorrection}) = _HR_GammaCorrection
     export GammaCorrection
 
+    const _AT_GeoLineString = COMPONENT_TYPES["rerun.components.GeoLineString"]
+    const _HR_GeoLineString = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct GeoLineString <: Component
+        value::Vector{NTuple{2,Float64}}
+    end
+    componenttype(::Type{GeoLineString}) = "rerun.components.GeoLineString"
+    arrowtype(::Type{GeoLineString}) = _AT_GeoLineString
+    handleref(::Type{GeoLineString}) = _HR_GeoLineString
+    _payload(::Type{GeoLineString}, v) = _unwrap(v, :value)
+    export GeoLineString
+
+    const _AT_GraphNode = COMPONENT_TYPES["rerun.components.GraphNode"]
+    const _HR_GraphNode = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct GraphNode <: Component
+        value::String
+    end
+    GraphNode(v::AbstractString) = GraphNode(String(v))
+    componenttype(::Type{GraphNode}) = "rerun.components.GraphNode"
+    arrowtype(::Type{GraphNode}) = _AT_GraphNode
+    handleref(::Type{GraphNode}) = _HR_GraphNode
+    _payload(::Type{GraphNode}, v) = _unwrap(v, :value)
+    export GraphNode
+
     const _AT_HalfSize2D = COMPONENT_TYPES["rerun.components.HalfSize2D"]
     const _HR_HalfSize2D = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
     struct HalfSize2D <: Component
@@ -135,6 +181,17 @@ import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref
     arrowtype(::Type{HalfSize3D}) = _AT_HalfSize3D
     handleref(::Type{HalfSize3D}) = _HR_HalfSize3D
     export HalfSize3D
+
+    const _AT_ImageBuffer = COMPONENT_TYPES["rerun.components.ImageBuffer"]
+    const _HR_ImageBuffer = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct ImageBuffer <: Component
+        value::Vector{UInt8}
+    end
+    componenttype(::Type{ImageBuffer}) = "rerun.components.ImageBuffer"
+    arrowtype(::Type{ImageBuffer}) = _AT_ImageBuffer
+    handleref(::Type{ImageBuffer}) = _HR_ImageBuffer
+    _payload(::Type{ImageBuffer}, v) = _unwrap(v, :value)
+    export ImageBuffer
 
     const _AT_ImagePlaneDistance = COMPONENT_TYPES["rerun.components.ImagePlaneDistance"]
     const _HR_ImagePlaneDistance = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
@@ -176,6 +233,28 @@ import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref
     handleref(::Type{Length}) = _HR_Length
     export Length
 
+    const _AT_LineStrip2D = COMPONENT_TYPES["rerun.components.LineStrip2D"]
+    const _HR_LineStrip2D = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct LineStrip2D <: Component
+        value::Vector{NTuple{2,Float32}}
+    end
+    componenttype(::Type{LineStrip2D}) = "rerun.components.LineStrip2D"
+    arrowtype(::Type{LineStrip2D}) = _AT_LineStrip2D
+    handleref(::Type{LineStrip2D}) = _HR_LineStrip2D
+    _payload(::Type{LineStrip2D}, v) = _unwrap(v, :value)
+    export LineStrip2D
+
+    const _AT_LineStrip3D = COMPONENT_TYPES["rerun.components.LineStrip3D"]
+    const _HR_LineStrip3D = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct LineStrip3D <: Component
+        value::Vector{NTuple{3,Float32}}
+    end
+    componenttype(::Type{LineStrip3D}) = "rerun.components.LineStrip3D"
+    arrowtype(::Type{LineStrip3D}) = _AT_LineStrip3D
+    handleref(::Type{LineStrip3D}) = _HR_LineStrip3D
+    _payload(::Type{LineStrip3D}, v) = _unwrap(v, :value)
+    export LineStrip3D
+
     const _AT_LinearSpeed = COMPONENT_TYPES["rerun.components.LinearSpeed"]
     const _HR_LinearSpeed = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
     struct LinearSpeed <: Component
@@ -195,6 +274,30 @@ import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref
     arrowtype(::Type{MarkerSize}) = _AT_MarkerSize
     handleref(::Type{MarkerSize}) = _HR_MarkerSize
     export MarkerSize
+
+    const _AT_MediaType = COMPONENT_TYPES["rerun.components.MediaType"]
+    const _HR_MediaType = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct MediaType <: Component
+        value::String
+    end
+    MediaType(v::AbstractString) = MediaType(String(v))
+    componenttype(::Type{MediaType}) = "rerun.components.MediaType"
+    arrowtype(::Type{MediaType}) = _AT_MediaType
+    handleref(::Type{MediaType}) = _HR_MediaType
+    _payload(::Type{MediaType}, v) = _unwrap(v, :value)
+    export MediaType
+
+    const _AT_Name = COMPONENT_TYPES["rerun.components.Name"]
+    const _HR_Name = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct Name <: Component
+        value::String
+    end
+    Name(v::AbstractString) = Name(String(v))
+    componenttype(::Type{Name}) = "rerun.components.Name"
+    arrowtype(::Type{Name}) = _AT_Name
+    handleref(::Type{Name}) = _HR_Name
+    _payload(::Type{Name}, v) = _unwrap(v, :value)
+    export Name
 
     const _AT_Opacity = COMPONENT_TYPES["rerun.components.Opacity"]
     const _HR_Opacity = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
@@ -336,6 +439,30 @@ import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref
     handleref(::Type{Texcoord2D}) = _HR_Texcoord2D
     export Texcoord2D
 
+    const _AT_Text = COMPONENT_TYPES["rerun.components.Text"]
+    const _HR_Text = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct Text <: Component
+        value::String
+    end
+    Text(v::AbstractString) = Text(String(v))
+    componenttype(::Type{Text}) = "rerun.components.Text"
+    arrowtype(::Type{Text}) = _AT_Text
+    handleref(::Type{Text}) = _HR_Text
+    _payload(::Type{Text}, v) = _unwrap(v, :value)
+    export Text
+
+    const _AT_TextLogLevel = COMPONENT_TYPES["rerun.components.TextLogLevel"]
+    const _HR_TextLogLevel = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct TextLogLevel <: Component
+        value::String
+    end
+    TextLogLevel(v::AbstractString) = TextLogLevel(String(v))
+    componenttype(::Type{TextLogLevel}) = "rerun.components.TextLogLevel"
+    arrowtype(::Type{TextLogLevel}) = _AT_TextLogLevel
+    handleref(::Type{TextLogLevel}) = _HR_TextLogLevel
+    _payload(::Type{TextLogLevel}, v) = _unwrap(v, :value)
+    export TextLogLevel
+
     const _AT_Timestamp = COMPONENT_TYPES["rerun.components.Timestamp"]
     const _HR_Timestamp = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
     struct Timestamp <: Component
@@ -345,6 +472,18 @@ import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref
     arrowtype(::Type{Timestamp}) = _AT_Timestamp
     handleref(::Type{Timestamp}) = _HR_Timestamp
     export Timestamp
+
+    const _AT_TransformFrameId = COMPONENT_TYPES["rerun.components.TransformFrameId"]
+    const _HR_TransformFrameId = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct TransformFrameId <: Component
+        value::String
+    end
+    TransformFrameId(v::AbstractString) = TransformFrameId(String(v))
+    componenttype(::Type{TransformFrameId}) = "rerun.components.TransformFrameId"
+    arrowtype(::Type{TransformFrameId}) = _AT_TransformFrameId
+    handleref(::Type{TransformFrameId}) = _HR_TransformFrameId
+    _payload(::Type{TransformFrameId}, v) = _unwrap(v, :value)
+    export TransformFrameId
 
     const _AT_TransformMat3x3 = COMPONENT_TYPES["rerun.components.TransformMat3x3"]
     const _HR_TransformMat3x3 = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
@@ -405,6 +544,17 @@ import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref
     arrowtype(::Type{Vector3D}) = _AT_Vector3D
     handleref(::Type{Vector3D}) = _HR_Vector3D
     export Vector3D
+
+    const _AT_VideoSample = COMPONENT_TYPES["rerun.components.VideoSample"]
+    const _HR_VideoSample = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct VideoSample <: Component
+        value::Vector{UInt8}
+    end
+    componenttype(::Type{VideoSample}) = "rerun.components.VideoSample"
+    arrowtype(::Type{VideoSample}) = _AT_VideoSample
+    handleref(::Type{VideoSample}) = _HR_VideoSample
+    _payload(::Type{VideoSample}, v) = _unwrap(v, :value)
+    export VideoSample
 
     const _AT_VideoTimestamp = COMPONENT_TYPES["rerun.components.VideoTimestamp"]
     const _HR_VideoTimestamp = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
@@ -627,6 +777,192 @@ import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref
     export VideoCodec
 
 end # module Components
+
+module Blueprint   # viewer-configuration components (enum-backed)
+import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref, ..LibRerunC
+    const _AT_BackgroundKind = COMPONENT_TYPES["rerun.blueprint.components.BackgroundKind"]
+    const _HR_BackgroundKind = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct BackgroundKind <: Component
+        value::UInt8
+    end
+    componenttype(::Type{BackgroundKind}) = "rerun.blueprint.components.BackgroundKind"
+    arrowtype(::Type{BackgroundKind}) = _AT_BackgroundKind
+    handleref(::Type{BackgroundKind}) = _HR_BackgroundKind
+    function Base.getproperty(::Type{BackgroundKind}, s::Symbol)
+        s === :Invalid && return BackgroundKind(UInt8(0))
+        s === :GradientDark && return BackgroundKind(UInt8(1))
+        s === :GradientBright && return BackgroundKind(UInt8(2))
+        s === :SolidColor && return BackgroundKind(UInt8(3))
+        return getfield(BackgroundKind, s)
+    end
+    Base.propertynames(::Type{BackgroundKind}) = (:Invalid, :GradientDark, :GradientBright, :SolidColor)
+    export BackgroundKind
+
+    const _AT_ContainerKind = COMPONENT_TYPES["rerun.blueprint.components.ContainerKind"]
+    const _HR_ContainerKind = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct ContainerKind <: Component
+        value::UInt8
+    end
+    componenttype(::Type{ContainerKind}) = "rerun.blueprint.components.ContainerKind"
+    arrowtype(::Type{ContainerKind}) = _AT_ContainerKind
+    handleref(::Type{ContainerKind}) = _HR_ContainerKind
+    function Base.getproperty(::Type{ContainerKind}, s::Symbol)
+        s === :Invalid && return ContainerKind(UInt8(0))
+        s === :Tabs && return ContainerKind(UInt8(1))
+        s === :Horizontal && return ContainerKind(UInt8(2))
+        s === :Vertical && return ContainerKind(UInt8(3))
+        s === :Grid && return ContainerKind(UInt8(4))
+        return getfield(ContainerKind, s)
+    end
+    Base.propertynames(::Type{ContainerKind}) = (:Invalid, :Tabs, :Horizontal, :Vertical, :Grid)
+    export ContainerKind
+
+    const _AT_Corner2D = COMPONENT_TYPES["rerun.blueprint.components.Corner2D"]
+    const _HR_Corner2D = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct Corner2D <: Component
+        value::UInt8
+    end
+    componenttype(::Type{Corner2D}) = "rerun.blueprint.components.Corner2D"
+    arrowtype(::Type{Corner2D}) = _AT_Corner2D
+    handleref(::Type{Corner2D}) = _HR_Corner2D
+    function Base.getproperty(::Type{Corner2D}, s::Symbol)
+        s === :Invalid && return Corner2D(UInt8(0))
+        s === :LeftTop && return Corner2D(UInt8(1))
+        s === :RightTop && return Corner2D(UInt8(2))
+        s === :LeftBottom && return Corner2D(UInt8(3))
+        s === :RightBottom && return Corner2D(UInt8(4))
+        return getfield(Corner2D, s)
+    end
+    Base.propertynames(::Type{Corner2D}) = (:Invalid, :LeftTop, :RightTop, :LeftBottom, :RightBottom)
+    export Corner2D
+
+    const _AT_Eye3DKind = COMPONENT_TYPES["rerun.blueprint.components.Eye3DKind"]
+    const _HR_Eye3DKind = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct Eye3DKind <: Component
+        value::UInt8
+    end
+    componenttype(::Type{Eye3DKind}) = "rerun.blueprint.components.Eye3DKind"
+    arrowtype(::Type{Eye3DKind}) = _AT_Eye3DKind
+    handleref(::Type{Eye3DKind}) = _HR_Eye3DKind
+    function Base.getproperty(::Type{Eye3DKind}, s::Symbol)
+        s === :Invalid && return Eye3DKind(UInt8(0))
+        s === :FirstPerson && return Eye3DKind(UInt8(1))
+        s === :Orbital && return Eye3DKind(UInt8(2))
+        return getfield(Eye3DKind, s)
+    end
+    Base.propertynames(::Type{Eye3DKind}) = (:Invalid, :FirstPerson, :Orbital)
+    export Eye3DKind
+
+    const _AT_LinkAxis = COMPONENT_TYPES["rerun.blueprint.components.LinkAxis"]
+    const _HR_LinkAxis = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct LinkAxis <: Component
+        value::UInt8
+    end
+    componenttype(::Type{LinkAxis}) = "rerun.blueprint.components.LinkAxis"
+    arrowtype(::Type{LinkAxis}) = _AT_LinkAxis
+    handleref(::Type{LinkAxis}) = _HR_LinkAxis
+    function Base.getproperty(::Type{LinkAxis}, s::Symbol)
+        s === :Invalid && return LinkAxis(UInt8(0))
+        s === :Independent && return LinkAxis(UInt8(1))
+        s === :LinkToGlobal && return LinkAxis(UInt8(2))
+        return getfield(LinkAxis, s)
+    end
+    Base.propertynames(::Type{LinkAxis}) = (:Invalid, :Independent, :LinkToGlobal)
+    export LinkAxis
+
+    const _AT_LoopMode = COMPONENT_TYPES["rerun.blueprint.components.LoopMode"]
+    const _HR_LoopMode = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct LoopMode <: Component
+        value::UInt8
+    end
+    componenttype(::Type{LoopMode}) = "rerun.blueprint.components.LoopMode"
+    arrowtype(::Type{LoopMode}) = _AT_LoopMode
+    handleref(::Type{LoopMode}) = _HR_LoopMode
+    function Base.getproperty(::Type{LoopMode}, s::Symbol)
+        s === :Invalid && return LoopMode(UInt8(0))
+        s === :Off && return LoopMode(UInt8(1))
+        s === :Selection && return LoopMode(UInt8(2))
+        s === :All && return LoopMode(UInt8(3))
+        return getfield(LoopMode, s)
+    end
+    Base.propertynames(::Type{LoopMode}) = (:Invalid, :Off, :Selection, :All)
+    export LoopMode
+
+    const _AT_MapProvider = COMPONENT_TYPES["rerun.blueprint.components.MapProvider"]
+    const _HR_MapProvider = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct MapProvider <: Component
+        value::UInt8
+    end
+    componenttype(::Type{MapProvider}) = "rerun.blueprint.components.MapProvider"
+    arrowtype(::Type{MapProvider}) = _AT_MapProvider
+    handleref(::Type{MapProvider}) = _HR_MapProvider
+    function Base.getproperty(::Type{MapProvider}, s::Symbol)
+        s === :Invalid && return MapProvider(UInt8(0))
+        s === :OpenStreetMap && return MapProvider(UInt8(1))
+        s === :MapboxStreets && return MapProvider(UInt8(2))
+        s === :MapboxDark && return MapProvider(UInt8(3))
+        s === :MapboxSatellite && return MapProvider(UInt8(4))
+        s === :MapboxLight && return MapProvider(UInt8(5))
+        return getfield(MapProvider, s)
+    end
+    Base.propertynames(::Type{MapProvider}) = (:Invalid, :OpenStreetMap, :MapboxStreets, :MapboxDark, :MapboxSatellite, :MapboxLight)
+    export MapProvider
+
+    const _AT_PanelState = COMPONENT_TYPES["rerun.blueprint.components.PanelState"]
+    const _HR_PanelState = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct PanelState <: Component
+        value::UInt8
+    end
+    componenttype(::Type{PanelState}) = "rerun.blueprint.components.PanelState"
+    arrowtype(::Type{PanelState}) = _AT_PanelState
+    handleref(::Type{PanelState}) = _HR_PanelState
+    function Base.getproperty(::Type{PanelState}, s::Symbol)
+        s === :Invalid && return PanelState(UInt8(0))
+        s === :Hidden && return PanelState(UInt8(1))
+        s === :Collapsed && return PanelState(UInt8(2))
+        s === :Expanded && return PanelState(UInt8(3))
+        return getfield(PanelState, s)
+    end
+    Base.propertynames(::Type{PanelState}) = (:Invalid, :Hidden, :Collapsed, :Expanded)
+    export PanelState
+
+    const _AT_PlayState = COMPONENT_TYPES["rerun.blueprint.components.PlayState"]
+    const _HR_PlayState = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct PlayState <: Component
+        value::UInt8
+    end
+    componenttype(::Type{PlayState}) = "rerun.blueprint.components.PlayState"
+    arrowtype(::Type{PlayState}) = _AT_PlayState
+    handleref(::Type{PlayState}) = _HR_PlayState
+    function Base.getproperty(::Type{PlayState}, s::Symbol)
+        s === :Invalid && return PlayState(UInt8(0))
+        s === :Paused && return PlayState(UInt8(1))
+        s === :Playing && return PlayState(UInt8(2))
+        s === :Following && return PlayState(UInt8(3))
+        return getfield(PlayState, s)
+    end
+    Base.propertynames(::Type{PlayState}) = (:Invalid, :Paused, :Playing, :Following)
+    export PlayState
+
+    const _AT_ViewFit = COMPONENT_TYPES["rerun.blueprint.components.ViewFit"]
+    const _HR_ViewFit = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct ViewFit <: Component
+        value::UInt8
+    end
+    componenttype(::Type{ViewFit}) = "rerun.blueprint.components.ViewFit"
+    arrowtype(::Type{ViewFit}) = _AT_ViewFit
+    handleref(::Type{ViewFit}) = _HR_ViewFit
+    function Base.getproperty(::Type{ViewFit}, s::Symbol)
+        s === :Invalid && return ViewFit(UInt8(0))
+        s === :Original && return ViewFit(UInt8(1))
+        s === :Fill && return ViewFit(UInt8(2))
+        s === :FillKeepAspectRatio && return ViewFit(UInt8(3))
+        return getfield(ViewFit, s)
+    end
+    Base.propertynames(::Type{ViewFit}) = (:Invalid, :Original, :Fill, :FillKeepAspectRatio)
+    export ViewFit
+
+end # module Blueprint
 
 module Archetypes
 import ..Archetype, ..archetypename, .._arch_field_spec, .._cached_arch_handle, ..COMPONENT_TYPES, ..LibRerunC

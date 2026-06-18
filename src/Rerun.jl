@@ -18,6 +18,7 @@ include(joinpath(@__DIR__, "types.jl"))       # Component/Archetype tags + typed
 include(joinpath(@__DIR__, "columns.jl"))     # send_columns (columnar/temporal bulk)
 include(joinpath(@__DIR__, "util.jl"))        # entity-path escaping, video timestamps
 include(joinpath(@__DIR__, "generated_types.jl"))  # generated component/archetype structs
+include(joinpath(@__DIR__, "helpers.jl"))     # high-level conveniences (log_tensor, ...)
 
 """Resolved Arrow datatype for a Rerun component, e.g. `"rerun.components.Position3D"`."""
 component_arrow_type(ct::AbstractString) = COMPONENT_TYPES[ct]

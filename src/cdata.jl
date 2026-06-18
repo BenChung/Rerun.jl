@@ -235,6 +235,12 @@ function _validity_bitmap(data::AbstractVector)
 end
 
 function _build_component_array(t::ArrowType, data::AbstractVector)
+    # Carrier components (Text/Blob/…) hold their wire value in a field; unwrap to
+    # it so both the component-vector and archetype-field paths work. Flat
+    # components' `_payload` is the identity, so the zero-copy path is preserved.
+    if eltype(data) <: Union{Component,Missing}
+        data = _payload(Base.nonmissingtype(eltype(data)), data)
+    end
     if _is_flat(t)
         # Flat layout: require an exactly-matching isbits element (ignoring an
         # optional `Missing`) so we can hand rerun a pointer into `data`
@@ -250,8 +256,34 @@ function _build_component_array(t::ArrowType, data::AbstractVector)
         top = _build_array_node(t, length(data), Ptr{Cvoid}(pointer(data)), vptr, nc)
         root = bm === nothing ? data : (data, bm)              # keep the bitmap alive too
         return _with_array_private(top, Ptr{Cvoid}(_register_root!(root)))
+    elseif t isa ArrowList && _is_flat(t.item.type)
+        return _build_list_zerocopy(t, data)                  # e.g. Blob: zero-copy the values
     end
-    return _assembled(t, data)   # non-flat: utf8 / binary / list / struct / bool
+    return _assembled(t, data)   # non-flat: utf8 / binary / struct / bool / nested list
+end
+
+# Top-level List<flat>: zero-copy the values (rooted) + rooted Int32 offsets, so
+# a Blob/large list isn't copied. A single-element list references its one item
+# directly (no concat); multiple elements concatenate once. Only used at the top
+# level — nested lists go through the owned `_assembled` path (no mixed ownership).
+function _build_list_zerocopy(t::ArrowList, data::AbstractVector)
+    n = length(data)
+    bm, nc = _validity_bitmap(data)
+    offsets = Vector{Int32}(undef, n + 1); offsets[1] = 0
+    @inbounds for i in 1:n
+        offsets[i + 1] = offsets[i] + Int32(data[i] === missing ? 0 : length(data[i]))
+    end
+    flat = (n == 1 && data[1] !== missing) ? data[1] :
+           collect(Iterators.flatten(x for x in data if x !== missing))
+    T = Base.nonmissingtype(eltype(flat))
+    isbitstype(T) && sizeof(T) == _wire_elsize(t.item.type) ||
+        error("list item layout of $(eltype(flat)) doesn't match $(_summ(t.item.type))")
+    kids = Ptr{Ptr{LibRerunC.ArrowArray}}(Libc.malloc(sizeof(Ptr)))
+    unsafe_store!(kids, _child_ptr(_build_array_node(t.item.type, length(flat), Ptr{Cvoid}(pointer(flat)))), 1)
+    vptr = bm === nothing ? Ptr{Cvoid}(C_NULL) : Ptr{Cvoid}(pointer(bm))
+    list = LibRerunC.ArrowArray(n, nc, 0, 2, 1,
+        _buffers(vptr, Ptr{Cvoid}(pointer(offsets))), kids, Ptr{LibRerunC.ArrowArray}(C_NULL), _ARRAY_RELEASE[], C_NULL)
+    return _with_array_private(list, Ptr{Cvoid}(_register_root!((offsets, flat, bm))))
 end
 
 # ---------------------------------------------------------------------------
@@ -268,8 +300,25 @@ function _buffers(ptrs::Ptr{Cvoid}...)            # malloc a buffer-pointer arra
     for (i, p) in enumerate(ptrs); unsafe_store!(arr, p, i); end
     return arr
 end
-_owned_array(len, nbuf, bufs, nchild, kids) = LibRerunC.ArrowArray(
-    len, 0, 0, nbuf, nchild, bufs, kids, Ptr{LibRerunC.ArrowArray}(C_NULL), _ARRAY_RELEASE_OWNED[], C_NULL)
+_owned_array(len, nbuf, bufs, nchild, kids, null_count=0) = LibRerunC.ArrowArray(
+    len, null_count, 0, nbuf, nchild, bufs, kids, Ptr{LibRerunC.ArrowArray}(C_NULL), _ARRAY_RELEASE_OWNED[], C_NULL)
+
+# Owned (malloc'd) validity bitmap for an assembled node, or (NULL, 0) if there
+# are no missings. The bitmap is freed by the owned release.
+function _owned_validity(data)
+    Missing <: eltype(data) || return (Ptr{Cvoid}(C_NULL), 0)
+    n = length(data); bp = Ptr{UInt8}(Libc.calloc(max(cld(n, 8), 1), 1)); nc = 0
+    @inbounds for i in 1:n
+        if data[i] === missing
+            nc += 1
+        else
+            off = (i - 1) >> 3
+            unsafe_store!(bp + off, unsafe_load(bp + off) | (UInt8(1) << ((i - 1) & 7)))
+        end
+    end
+    nc == 0 && (Libc.free(bp); return (Ptr{Cvoid}(C_NULL), 0))   # no actual missings → no bitmap
+    return (Ptr{Cvoid}(bp), nc)
+end
 function _child_ptr(node::LibRerunC.ArrowArray)   # malloc a child ArrowArray struct
     cp = Ptr{LibRerunC.ArrowArray}(Libc.malloc(sizeof(LibRerunC.ArrowArray)))
     unsafe_store!(cp, node)
@@ -291,55 +340,70 @@ function _assembled(t::ArrowAtom, data::AbstractVector)
     T = _ATOM_JULIA[t.tag]
     n = length(data)
     vp = Ptr{T}(Libc.malloc(max(n * sizeof(T), 1)))
-    @inbounds for i in 1:n; unsafe_store!(vp, convert(T, data[i]), i); end
-    return _owned_array(n, 2, _buffers(C_NULL, Ptr{Cvoid}(vp)), 0, Ptr{Ptr{LibRerunC.ArrowArray}}(C_NULL))
+    @inbounds for i in 1:n
+        x = data[i]
+        unsafe_store!(vp, x === missing ? zero(T) : convert(T, x), i)   # garbage at null slots
+    end
+    vptr, nc = _owned_validity(data)
+    return _owned_array(n, 2, _buffers(vptr, Ptr{Cvoid}(vp)), 0, Ptr{Ptr{LibRerunC.ArrowArray}}(C_NULL), nc)
 end
 
 function _assembled_bool(data::AbstractVector)
     n = length(data)
     bp = Ptr{UInt8}(Libc.calloc(max(cld(n, 8), 1), 1))
     @inbounds for i in 1:n
-        if data[i]
+        if data[i] === true                                            # `missing`/false → 0
             off = (i - 1) >> 3
             unsafe_store!(bp + off, unsafe_load(bp + off) | (UInt8(1) << ((i - 1) & 7)))
         end
     end
-    return _owned_array(n, 2, _buffers(C_NULL, Ptr{Cvoid}(bp)), 0, Ptr{Ptr{LibRerunC.ArrowArray}}(C_NULL))
+    vptr, nc = _owned_validity(data)
+    return _owned_array(n, 2, _buffers(vptr, Ptr{Cvoid}(bp)), 0, Ptr{Ptr{LibRerunC.ArrowArray}}(C_NULL), nc)
 end
 
-# utf8/binary: [validity, offsets(Int32, n+1), bytes]
+# utf8/binary: [validity, offsets(Int32, n+1), bytes]; `missing` → empty span
 function _assembled(::Union{ArrowUtf8,ArrowBinary}, data::AbstractVector)
     n = length(data)
-    total = 0; for x in data; total += _nbytes(x); end
+    total = 0; for x in data; x === missing || (total += _nbytes(x)); end
     offp = Ptr{Int32}(Libc.malloc((n + 1) * sizeof(Int32)))
     bufp = Ptr{UInt8}(_mbuf(total))
     unsafe_store!(offp, Int32(0), 1); acc = 0
     @inbounds for (i, x) in enumerate(data)
-        nb = _nbytes(x)
-        nb > 0 && GC.@preserve x unsafe_copyto!(bufp + acc, _byteptr(x), nb)
-        acc += nb; unsafe_store!(offp, Int32(acc), i + 1)
+        if x !== missing
+            nb = _nbytes(x)
+            nb > 0 && GC.@preserve x unsafe_copyto!(bufp + acc, _byteptr(x), nb)
+            acc += nb
+        end
+        unsafe_store!(offp, Int32(acc), i + 1)
     end
-    return _owned_array(n, 3, _buffers(C_NULL, Ptr{Cvoid}(offp), Ptr{Cvoid}(bufp)), 0,
-        Ptr{Ptr{LibRerunC.ArrowArray}}(C_NULL))
+    vptr, nc = _owned_validity(data)
+    return _owned_array(n, 3, _buffers(vptr, Ptr{Cvoid}(offp), Ptr{Cvoid}(bufp)), 0,
+        Ptr{Ptr{LibRerunC.ArrowArray}}(C_NULL), nc)
 end
 _byteptr(s::String) = pointer(s)
 _byteptr(v::Vector{UInt8}) = pointer(v)
 _byteptr(x) = pointer(Vector{UInt8}(codeunits(String(x))))   # fallback for other string/byte types
 
-# list: [validity, offsets(Int32, n+1)] + 1 child (flattened items)
+# list: [validity, offsets(Int32, n+1)] + 1 child (flattened items); `missing` → empty span
 function _assembled(t::ArrowList, data::AbstractVector)
     n = length(data)
     offp = Ptr{Int32}(Libc.malloc((n + 1) * sizeof(Int32)))
     unsafe_store!(offp, Int32(0), 1); acc = 0
-    @inbounds for (i, x) in enumerate(data); acc += length(x); unsafe_store!(offp, Int32(acc), i + 1); end
-    flat = collect(Iterators.flatten(data))
+    @inbounds for (i, x) in enumerate(data)
+        x === missing || (acc += length(x))
+        unsafe_store!(offp, Int32(acc), i + 1)
+    end
+    flat = collect(Iterators.flatten(x for x in data if x !== missing))
     kids = Ptr{Ptr{LibRerunC.ArrowArray}}(Libc.malloc(sizeof(Ptr)))
     unsafe_store!(kids, _child_ptr(_assembled(t.item.type, flat)), 1)
-    return _owned_array(n, 2, _buffers(C_NULL, Ptr{Cvoid}(offp)), 1, kids)
+    vptr, nc = _owned_validity(data)
+    return _owned_array(n, 2, _buffers(vptr, Ptr{Cvoid}(offp)), 1, kids, nc)
 end
 
 # struct: [validity] + one columnar child per field
 function _assembled(t::ArrowStruct, data::AbstractVector)
+    Missing <: eltype(data) && any(x -> x === missing, data) &&
+        error("missing struct elements aren't supported yet (assembled-path struct validity)")
     n = length(data); nc = length(t.fields)
     kids = Ptr{Ptr{LibRerunC.ArrowArray}}(Libc.malloc(sizeof(Ptr) * nc))
     for (j, f) in enumerate(t.fields)
@@ -348,6 +412,59 @@ function _assembled(t::ArrowStruct, data::AbstractVector)
         unsafe_store!(kids, _child_ptr(_assembled(f.type, col)), j)
     end
     return _owned_array(n, 1, _buffers(C_NULL), nc, kids)
+end
+
+# --- dense union ---
+# The variant of a value is its concrete Julia type (the discriminant). `_fits`
+# is a structural type check against a variant's Arrow datatype.
+_fits(x, t::ArrowAtom)     = t.tag !== :null && (t.tag === :bool ? x isa Bool : x isa _ATOM_JULIA[t.tag])
+_fits(x, ::ArrowUtf8)      = x isa AbstractString
+_fits(x, ::ArrowBinary)    = x isa AbstractVector{UInt8}
+_fits(x, t::ArrowFixedList)= (x isa Tuple || x isa AbstractVector) && length(x) == t.n
+_fits(x, t::ArrowList)     = x isa AbstractVector && (isempty(x) || _fits(first(x), t.item.type))
+_fits(x, t::ArrowStruct)   = x isa NamedTuple &&
+    all(f -> hasproperty(x, Symbol(f.name)) && _fits(getfield(x, Symbol(f.name)), f.type), t.fields)
+_fits(_, ::ArrowType)      = false
+
+# Resolve a value to a 1-based variant index (`_null_markers` is variant 1).
+function _union_variant(x, fields)
+    x === missing && return 1
+    if x isa Pair{Symbol,<:Any}                          # explicit tag: :Variant => value
+        nm = String(first(x))
+        for (v, f) in enumerate(fields); f.name == nm && return v; end
+        names = join((f.name for f in fields[2:end]), ", ")
+        error("union has no variant `$(first(x))`; variants: $names")
+    end
+    matches = Int[]
+    for v in 2:length(fields); _fits(x, fields[v].type) && push!(matches, v); end
+    length(matches) == 1 && return matches[1]
+    if isempty(matches)
+        opts = join(("$(f.name)::$(_summ(f.type))" for f in fields[2:end]), ", ")
+        error("value of type $(typeof(x)) matches no union variant ($opts)")
+    end
+    hits = join((fields[v].name for v in matches), ", ")
+    error("ambiguous union value of type $(typeof(x)): matches $hits; disambiguate with `:Variant => value`")
+end
+_union_payload(x) = x isa Pair{Symbol,<:Any} ? last(x) : x
+
+# dense union: [types(Int8), offsets(Int32)] + one child per variant (bucketed)
+function _assembled(t::ArrowUnion, data::AbstractVector)
+    n = length(data); nv = length(t.fields)
+    types = Vector{Int8}(undef, n); offsets = Vector{Int32}(undef, n)
+    buckets = [Any[] for _ in 1:nv]
+    for (i, x) in enumerate(data)
+        v = _union_variant(x, t.fields)
+        @inbounds types[i] = Int8(v - 1)
+        @inbounds offsets[i] = Int32(length(buckets[v]))
+        push!(buckets[v], _union_payload(x))
+    end
+    kids = Ptr{Ptr{LibRerunC.ArrowArray}}(Libc.malloc(sizeof(Ptr) * nv))
+    for v in 1:nv
+        unsafe_store!(kids, _child_ptr(_assembled(t.fields[v].type, buckets[v])), v)
+    end
+    tp = Ptr{Int8}(Libc.malloc(max(n, 1)));      n > 0 && GC.@preserve types   unsafe_copyto!(tp, pointer(types), n)
+    op = Ptr{Int32}(Libc.malloc(max(n, 1) * 4)); n > 0 && GC.@preserve offsets unsafe_copyto!(op, pointer(offsets), n)
+    return _owned_array(n, 2, _buffers(Ptr{Cvoid}(tp), Ptr{Cvoid}(op)), nv, kids)
 end
 
 function _init_callbacks()

@@ -44,6 +44,13 @@ Log one or more materialized component batches as a single row, e.g.
 component identity comes from its element type, so there are no kwargs and no
 strings on this path — it's fully type-specialized and zero-copy.
 """
+# Wire payload of a component batch (applied in `_build_component_array`). Flat
+# components are already wire-shaped, so this is the identity (keeps the
+# zero-copy path); carriers (e.g. Text/Blob) override it to unwrap their field
+# (preserving `missing`).
+_payload(::Type{<:Component}, v) = v
+_unwrap(v, field::Symbol) = [x === missing ? missing : getfield(x, field) for x in v]
+
 # Accept Vector{C} and Vector{Union{C,Missing}} alike; the component identity is
 # the non-missing element type (resolved at compile time).
 @inline function _component_spec(v::AbstractVector{<:Union{Component,Missing}})

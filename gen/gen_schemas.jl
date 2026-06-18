@@ -218,6 +218,51 @@ function julia_wire_type(ctx::Ctx, t)
     end
 end
 
+# Julia carrier field type for a non-flat "simple" component: utf8 -> String,
+# list<flat-item> -> Vector{item}. `nothing` for struct/union/etc. components.
+function carrier_field_type(ctx::Ctx, t)
+    bt = String(t.base_type)
+    if bt == "Obj"
+        o = ctx.objects[Int(t.index) + 1]
+        (haskey(o, :fields) && length(o.fields) == 1 &&
+            (kind_of(String(o.name)) == :component || has_attr(o, "attr.arrow.transparent"))) || return nothing
+        return carrier_field_type(ctx, o.fields[1].type)
+    elseif bt == "String"
+        return "String"
+    elseif bt == "Vector"
+        el = julia_wire_elem(ctx, t)
+        return el === nothing ? nothing : "Vector{$el}"
+    end
+    return nothing
+end
+
+# Source for an enum-backed component struct (per-type variant namespace via
+# getproperty, e.g. `Colormap.Inferno`). Shared by core and blueprint enums.
+function _enum_struct_src(short, fq, jt, values)
+    getprops = IOBuffer(); pnames = String[]
+    for v in values
+        nm = repr(Symbol(String(v.name)))
+        println(getprops, "        s === $nm && return $short($jt($(Int(v.value))))")
+        push!(pnames, nm)
+    end
+    pn = join(pnames, ", ") * (length(pnames) == 1 ? "," : "")
+    return """
+    const _AT_$short = COMPONENT_TYPES[$(repr(fq))]
+    const _HR_$short = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct $short <: Component
+        value::$jt
+    end
+    componenttype(::Type{$short}) = $(repr(fq))
+    arrowtype(::Type{$short}) = _AT_$short
+    handleref(::Type{$short}) = _HR_$short
+    function Base.getproperty(::Type{$short}, s::Symbol)
+$(String(take!(getprops)))        return getfield($short, s)
+    end
+    Base.propertynames(::Type{$short}) = ($pn)
+    export $short
+"""
+end
+
 # Resolve the component fqname an archetype field refers to: a single component
 # (Obj) or batch (`[Component]` => Vector/Array of Obj), and likewise for
 # enum-backed components (integer base_type / element + index into the enums table).
@@ -315,11 +360,11 @@ function main()
         fq = String(o.name)
         startswith(fq, "rerun.components.") || continue          # skip blueprint (avoids short-name clashes)
         (haskey(o, :fields) && length(o.fields) == 1) || continue # transparent component
-        jt = julia_wire_type(ctx, o.fields[1].type)
-        jt === nothing && continue                                # not zero-copy
         short = String(split(fq, '.')[end]); fld = String(o.fields[1].name)
-        push!(comp_names, short)
-        push!(comp_structs, """
+        jt = julia_wire_type(ctx, o.fields[1].type)
+        if jt !== nothing                                         # flat: struct IS the wire layout
+            push!(comp_names, short)
+            push!(comp_structs, """
     const _AT_$short = COMPONENT_TYPES[$(repr(fq))]
     const _HR_$short = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
     struct $short <: Component
@@ -330,6 +375,24 @@ function main()
     handleref(::Type{$short}) = _HR_$short
     export $short
 """)
+        else                                                      # carrier: utf8 -> String, list<flat> -> Vector
+            cjt = carrier_field_type(ctx, o.fields[1].type)
+            cjt === nothing && continue
+            push!(comp_names, short)
+            ctor = cjt == "String" ? "    $short(v::AbstractString) = $short(String(v))\n" : ""
+            push!(comp_structs, """
+    const _AT_$short = COMPONENT_TYPES[$(repr(fq))]
+    const _HR_$short = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
+    struct $short <: Component
+        value::$cjt
+    end
+$(ctor)    componenttype(::Type{$short}) = $(repr(fq))
+    arrowtype(::Type{$short}) = _AT_$short
+    handleref(::Type{$short}) = _HR_$short
+    _payload(::Type{$short}, v) = _unwrap(v, :value)
+    export $short
+""")
+        end
     end
 
     # enum-backed components (in the `enums` table): wire type is the underlying
@@ -339,30 +402,19 @@ function main()
         startswith(fq, "rerun.components.") || continue
         get(e, :is_union, false) && continue
         short = String(split(fq, '.')[end])
-        jt = JL_PRIM[String(e.underlying_type.base_type)]
         push!(comp_names, short)
-        getprops = IOBuffer(); pnames = String[]
-        for v in e.values
-            nm = repr(Symbol(String(v.name)))
-            println(getprops, "        s === $nm && return $short($jt($(Int(v.value))))")
-            push!(pnames, nm)
-        end
-        pn = join(pnames, ", ") * (length(pnames) == 1 ? "," : "")
-        push!(comp_structs, """
-    const _AT_$short = COMPONENT_TYPES[$(repr(fq))]
-    const _HR_$short = Ref{LibRerunC.rr_component_type_handle}(LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID)
-    struct $short <: Component
-        value::$jt
+        push!(comp_structs, _enum_struct_src(short, fq, JL_PRIM[String(e.underlying_type.base_type)], e.values))
     end
-    componenttype(::Type{$short}) = $(repr(fq))
-    arrowtype(::Type{$short}) = _AT_$short
-    handleref(::Type{$short}) = _HR_$short
-    function Base.getproperty(::Type{$short}, s::Symbol)
-$(String(take!(getprops)))        return getfield($short, s)
-    end
-    Base.propertynames(::Type{$short}) = ($pn)
-    export $short
-""")
+
+    # blueprint enum-backed components -> a separate `Blueprint` submodule
+    # (viewer config; kept apart so short names never clash with data components).
+    bp_structs = String[]
+    for e in ctx.enums
+        fq = String(e.name)
+        startswith(fq, "rerun.blueprint.components.") || continue
+        (get(e, :is_union, false) || !is_real(fq)) && continue
+        short = String(split(fq, '.')[end])
+        push!(bp_structs, _enum_struct_src(short, fq, JL_PRIM[String(e.underlying_type.base_type)], e.values))
     end
 
     arch_structs = String[]; arch_names = String[]
@@ -415,9 +467,14 @@ $(String(take!(meta)))    export $short
         println(io, "# e.g. ViewCoordinates is both). Use `using Rerun.Components` / `Rerun.Archetypes`.")
         println(io)
         println(io, "module Components")
-        println(io, "import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref, ..LibRerunC")
+        println(io, "import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref, ..LibRerunC, .._payload, .._unwrap")
         foreach(s -> println(io, s), comp_structs)
         println(io, "end # module Components")
+        println(io)
+        println(io, "module Blueprint   # viewer-configuration components (enum-backed)")
+        println(io, "import ..Component, ..COMPONENT_TYPES, ..componenttype, ..arrowtype, ..handleref, ..LibRerunC")
+        foreach(s -> println(io, s), bp_structs)
+        println(io, "end # module Blueprint")
         println(io)
         println(io, "module Archetypes")
         println(io, "import ..Archetype, ..archetypename, .._arch_field_spec, .._cached_arch_handle, ..COMPONENT_TYPES, ..LibRerunC")
@@ -428,7 +485,7 @@ $(String(take!(meta)))    export $short
     println("wrote $OUT")
     println("  components: $(length(comp_lines))   archetypes: $(length(arch_blocks))")
     println("wrote $OUT_TYPES")
-    println("  component structs: $(length(comp_structs))   archetype structs: $(length(arch_structs))")
+    println("  component structs: $(length(comp_structs))   blueprint: $(length(bp_structs))   archetype structs: $(length(arch_structs))")
     if !isempty(skipped)
         println("  skipped $(length(skipped)) components:")
         foreach(s -> println("    - $s"), skipped)

@@ -1,5 +1,6 @@
 using Rerun
 using Rerun.Components, Rerun.Archetypes
+import Rerun.Components: Text, Blob       # explicit (Text clashes with Base.Text)
 using Test
 
 const POS = NTuple{3,Float32}[(0,0,0), (1,2,3), (4,5,6)]
@@ -147,6 +148,81 @@ end
     @test Rerun._validity_bitmap([Radius(1f0)]) === (nothing, 0)   # type-stable no-missing path
     nm = [Position3D((1f0, 2f0, 3f0))]; Rerun.log(rec, "ok", nm); flush(rec)
     @test (@allocated Rerun.log(rec, "ok", nm)) == 0              # non-missing still 0-alloc
+end
+
+@testset "dense union (TensorData) + variant resolution" begin
+    rec = RecordingStream("rerun_jl_union")
+    out = tempname() * ".rrd"; Rerun.save(rec, out); Rerun.set_time(rec, "frame", 0)
+    f32 = (shape=UInt64[2,3], names=String[], buffer=(data=Float32[1,2,3,4,5,6],))
+    u8  = (shape=UInt64[2,2], names=String[], buffer=(data=UInt8[10,20,30,40],))
+    Rerun.log(rec, "t",   "rerun.components.TensorData", [f32])         # F32 variant
+    Rerun.log(rec, "i",   "rerun.components.TensorData", [u8])          # U8 variant
+    Rerun.log(rec, "mix", "rerun.components.TensorData", [f32, u8])     # mixed-variant column
+    flush(rec)
+    @test isfile(out) && filesize(out) > 0
+
+    buf = Rerun.COMPONENT_TYPES["rerun.components.TensorData"].fields[3].type
+    @test Rerun._union_variant((data=Float32[1],), buf.fields) == 11    # F32
+    @test Rerun._union_variant((data=UInt8[1],),  buf.fields) == 2      # U8
+    @test Rerun._union_variant(missing, buf.fields) == 1               # _null_markers
+
+    # two variants sharing a Julia type -> ambiguous unless tagged
+    af = [Rerun.ArrowField("_null_markers", Rerun.ArrowAtom(:null), true),
+          Rerun.ArrowField("A", Rerun.ArrowAtom(:i64), false),
+          Rerun.ArrowField("B", Rerun.ArrowAtom(:i64), false)]
+    @test_throws ErrorException Rerun._union_variant(Int64(5), af)
+    @test Rerun._union_variant(:B => Int64(5), af) == 3
+end
+
+@testset "log_tensor (Tensor archetype, row-major)" begin
+    rec = RecordingStream("rerun_jl_tensor")
+    out = tempname() * ".rrd"; Rerun.save(rec, out); Rerun.set_time(rec, "frame", 0)
+    Rerun.log_tensor(rec, "heat", Float32[sin(i/8)*cos(j/8) for i in 1:32, j in 1:24])
+    Rerun.log_tensor(rec, "vol", rand(UInt16, 8, 8, 4); names=["x","y","z"])
+    Rerun.log_tensor(rec, "sig", Float64.(1:100))
+    flush(rec)
+    @test isfile(out) && filesize(out) > 0
+    td = Rerun._tensordata(Float32[1 2 3; 4 5 6], nothing)
+    @test td.shape == UInt64[2, 3]
+    @test td.buffer.data == Float32[1, 2, 3, 4, 5, 6]                # row-major reorder
+end
+
+@testset "assembled validity + zero-copy Blob" begin
+    rec = RecordingStream("rerun_jl_amiss")
+    out = tempname() * ".rrd"; Rerun.save(rec, out); Rerun.set_time(rec, "frame", 0)
+    Rerun.log(rec, "labels", "rerun.components.Text", Union{String,Missing}["a", missing, "ccc"])
+    Rerun.log(rec, "flags",  "rerun.components.ShowLabels", Union{Bool,Missing}[true, missing, false])
+    Rerun.log(rec, "blob",   "rerun.components.Blob", Union{Vector{UInt8},Missing}[UInt8[1,2], missing])
+    flush(rec)
+    @test isfile(out) && filesize(out) > 0
+
+    vp, nc = Rerun._owned_validity(Union{String,Missing}["a", missing])
+    @test vp != C_NULL && nc == 1
+    vp2, nc2 = Rerun._owned_validity(["a", "b"]); @test vp2 == C_NULL && nc2 == 0
+
+    # zero-copy Blob: allocation is independent of payload size
+    big = rand(UInt8, 1_000_000)
+    Rerun.log(rec, "big", "rerun.components.Blob", [big]); flush(rec)
+    @test (@allocated Rerun.log(rec, "big", "rerun.components.Blob", [big])) < 2048
+end
+
+@testset "typed carriers (Text/Blob) + blueprint enums" begin
+    rec = RecordingStream("rerun_jl_carriers")
+    out = tempname() * ".rrd"; Rerun.save(rec, out); Rerun.set_time(rec, "frame", 0)
+    Rerun.log(rec, "labels", [Text("a"), Text("bb")])                     # carrier, component-vector path
+    Rerun.log(rec, "opt", Union{Text,Missing}[Text("x"), missing])        # carrier + missing
+    pts = [Position3D((Float32(i), 0f0, 0f0)) for i in 1:3]
+    Rerun.log(rec, "pts", Points3D(pts; labels=[Text("a"), Text("b"), Text("c")]))  # carrier in archetype field
+    Rerun.log(rec, "blob", [Blob(rand(UInt8, 10_000))])
+    flush(rec)
+    @test isfile(out) && filesize(out) > 0
+    @test Text("hi").value == "hi" && fieldtype(Blob, :value) == Vector{UInt8}
+
+    @test Rerun.Blueprint.BackgroundKind.SolidColor.value == 3            # blueprint enum namespace
+    @test :Horizontal in propertynames(Rerun.Blueprint.ContainerKind)
+
+    big = [Blob(rand(UInt8, 1_000_000))]; Rerun.log(rec, "big", big); flush(rec)
+    @test (@allocated Rerun.log(rec, "big", big)) < 4096                  # typed Blob still zero-copy
 end
 
 @testset "GC-stress: async release drained" begin
