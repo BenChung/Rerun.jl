@@ -4,3 +4,8 @@ output_file_path = "./LibRerunC.jl"
 module_name = "LibRerunC"
 jll_pkg_name = "librerun_c_jll"
 export_symbol_prefixes = ["rr_"]
+# rr_make_string is a header-only inline in rerun.h (no exported symbol in the .so),
+# so the generated ccall fails at runtime with "could not load symbol". The project
+# marshals strings via src/marshal.jl instead. Exclude it so regeneration does not
+# reintroduce a broken binding.
+output_ignorelist = ["rr_make_string"]

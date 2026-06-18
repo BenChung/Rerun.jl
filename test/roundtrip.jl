@@ -93,8 +93,16 @@ end
         [(first="a", second="b"), (first="c", second="d")])
     Rerun.log(rec, "dim",    "rerun.components.TensorWidthDimension",               # struct{u32,bool}
         [(dimension=UInt32(640), invert=false)])
+    Rerun.log(rec, "rot",    "rerun.components.RotationAxisAngle",                   # struct{FixedList<3,f32>, f32}
+        [(axis=(0f0,0f0,1f0), angle=0.5f0), (axis=(1f0,0f0,0f0), angle=1.5f0)])
     flush(rec)
     @test isfile(out) && filesize(out) > 0
+
+    # assembled fixed-size-list child (the RotationAxisAngle `axis` field): [validity]
+    # + 1 child of n*3 f32 (no offsets). Previously errored "assembled export not
+    # implemented for ArrowFixedList"; also fixes Boxes3D rotation_axis_angles.
+    aa = Rerun.COMPONENT_TYPES["rerun.components.RotationAxisAngle"]
+    @test any(f -> f.type isa Rerun.ArrowFixedList && f.type.n == 3, aa.fields)
 
     # assembled buffers are freed by the owned release on rerun's bg thread
     for i in 1:200
@@ -119,6 +127,13 @@ end
         ["rerun.components.Scalar" => Float64.(1:10)])
     Rerun.send_columns(rec, "pc", ["frame" => 0:49],
         [Position3D => pts, Color => [Color(0xff00ffff) for _ in 1:50]])
+    # typed carrier columns (Text/Blob) must work like `log`, not crash (#2)
+    Rerun.send_columns(rec, "names", ["frame" => 0:2],
+        [Text => [Text("a"), Text("bb"), Text("ccc")]])                 # mono carrier
+    Rerun.send_columns(rec, "tags", ["frame" => 0:1],
+        [Text => [[Text("x"), Text("y")], [Text("z")]]])                # multi carrier (batch/row)
+    Rerun.send_columns(rec, "blobs", ["frame" => 0:1],
+        [Blob => [Blob(UInt8[1,2,3]), Blob(UInt8[4,5])]])               # mono Blob carrier
     flush(rec)
     @test isfile(out) && filesize(out) > 0
 
@@ -153,8 +168,10 @@ end
 @testset "dense union (TensorData) + variant resolution" begin
     rec = RecordingStream("rerun_jl_union")
     out = tempname() * ".rrd"; Rerun.save(rec, out); Rerun.set_time(rec, "frame", 0)
-    f32 = (shape=UInt64[2,3], names=String[], buffer=(data=Float32[1,2,3,4,5,6],))
-    u8  = (shape=UInt64[2,2], names=String[], buffer=(data=UInt8[10,20,30,40],))
+    # TensorBuffer arms are the bare List<T> (no wrapping struct), so the buffer
+    # value is the tagged vector — `:F32 => data`, or a bare Vector matched structurally.
+    f32 = (shape=UInt64[2,3], names=String[], buffer=Float32[1,2,3,4,5,6])
+    u8  = (shape=UInt64[2,2], names=String[], buffer=UInt8[10,20,30,40])
     Rerun.log(rec, "t",   "rerun.components.TensorData", [f32])         # F32 variant
     Rerun.log(rec, "i",   "rerun.components.TensorData", [u8])          # U8 variant
     Rerun.log(rec, "mix", "rerun.components.TensorData", [f32, u8])     # mixed-variant column
@@ -162,9 +179,16 @@ end
     @test isfile(out) && filesize(out) > 0
 
     buf = Rerun.COMPONENT_TYPES["rerun.components.TensorData"].fields[3].type
-    @test Rerun._union_variant((data=Float32[1],), buf.fields) == 11    # F32
-    @test Rerun._union_variant((data=UInt8[1],),  buf.fields) == 2      # U8
+    @test buf.fields[2].type isa Rerun.ArrowList && buf.fields[12].name == "F64"  # arms unwrapped to List<T>
+    @test Rerun._union_variant(Float32[1], buf.fields) == 11           # F32 (structural)
+    @test Rerun._union_variant(UInt8[1],   buf.fields) == 2            # U8
+    @test Rerun._union_variant(:F32 => Float32[], buf.fields) == 11    # explicit tag (empty still resolves)
     @test Rerun._union_variant(missing, buf.fields) == 1               # _null_markers
+
+    # assembled-path conversion failure must throw cleanly (no crash / double-free
+    # / leak from the partial buffers) — exercises the struct/union/list/atom cleanup.
+    @test_throws Exception Rerun.log(rec, "bad", "rerun.components.TensorData",
+        [(shape=UInt64[1], names=String[], buffer=(:F32 => Any["not a number"]))])
 
     # two variants sharing a Julia type -> ambiguous unless tagged
     af = [Rerun.ArrowField("_null_markers", Rerun.ArrowAtom(:null), true),
@@ -184,7 +208,11 @@ end
     @test isfile(out) && filesize(out) > 0
     td = Rerun._tensordata(Float32[1 2 3; 4 5 6], nothing)
     @test td.shape == UInt64[2, 3]
-    @test td.buffer.data == Float32[1, 2, 3, 4, 5, 6]                # row-major reorder
+    @test td.buffer == (:F32 => Float32[1, 2, 3, 4, 5, 6])           # tagged variant + row-major reorder
+    # empty / zero-extent arrays resolve by eltype, not value (previously crashed
+    # with an ambiguous-union error, #5)
+    @test Rerun._tensordata(Float32[], nothing).buffer == (:F32 => Float32[])
+    @test Rerun._tensordata(Array{UInt8}(undef, 0, 5), nothing).buffer == (:U8 => UInt8[])
 end
 
 @testset "assembled validity + zero-copy Blob" begin

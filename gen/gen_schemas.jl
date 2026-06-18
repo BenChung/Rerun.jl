@@ -47,6 +47,14 @@ const ATOMIC = Dict(
 
 has_attr(o, key) = haskey(o, :attributes) && any(a -> String(a.key) == key, o.attributes)
 
+# A table is Arrow-transparent — its wrapper layer is erased, leaving the inner
+# field's type — if it carries `attr.arrow.transparent` OR the bare `transparent`
+# attribute (declared in attributes/fbs.fbs; used by the TensorBuffer `*Buffer`
+# datatypes). Without the bare-`transparent` case, each TensorBuffer union arm is
+# wrongly wrapped in `Struct{data: List<T>}` instead of the bare `List<T>` that
+# rerun_c expects, so TensorData/Tensor/BarChart silently fail to log.
+_is_transparent(o) = has_attr(o, "attr.arrow.transparent") || has_attr(o, "transparent")
+
 function kind_of(fqname::AbstractString)
     segs = split(fqname, '.')
     "archetypes" in segs && return :archetype
@@ -154,7 +162,7 @@ function resolve_object_idx(ctx::Ctx, i::Int)
         o = ctx.objects[i]
         fq = String(o.name)
         fq == "rerun.builtins.UnitType" && return "ArrowAtom(:null)"
-        transparent = (kind_of(fq) == :component) || has_attr(o, "attr.arrow.transparent")
+        transparent = (kind_of(fq) == :component) || _is_transparent(o)
         if transparent
             length(o.fields) == 1 || error("$fq: transparent but $(length(o.fields)) fields")
             f = o.fields[1]
@@ -186,24 +194,27 @@ const JL_PRIM = Dict(
 function julia_wire_obj(ctx::Ctx, o)
     fq = String(o.name)
     fq == "rerun.builtins.UnitType" && return nothing
-    transparent = (kind_of(fq) == :component) || has_attr(o, "attr.arrow.transparent")
+    transparent = (kind_of(fq) == :component) || _is_transparent(o)
     transparent || return nothing                 # struct/multi-field -> not flat
     length(o.fields) == 1 || return nothing
-    return julia_wire_type(ctx, o.fields[1].type)
+    return julia_wire_type(ctx, o.fields[1].type; override=_override_type(o.fields[1]))
 end
 
-function julia_wire_elem(ctx::Ctx, t)
+function julia_wire_elem(ctx::Ctx, t; override=nothing)
     el = String(t.element)
     el == "Obj" && return julia_wire_obj(ctx, ctx.objects[Int(t.index) + 1])
+    override == "float16" && el == "UShort" && return "Float16"
     return get(JL_PRIM, el, nothing)
 end
 
-function julia_wire_type(ctx::Ctx, t)
+# `override` is the field's `attr.rerun.override_type` (e.g. "float16" reinterprets a
+# ushort buffer); thread it so the wire/struct type matches the Arrow datatype.
+function julia_wire_type(ctx::Ctx, t; override=nothing)
     bt = String(t.base_type)
     if bt == "Obj"
         return julia_wire_obj(ctx, ctx.objects[Int(t.index) + 1])
     elseif bt == "Array"
-        el = julia_wire_elem(ctx, t)
+        el = julia_wire_elem(ctx, t; override=override)
         el === nothing && return nothing
         return "NTuple{$(Int(t.fixed_length)),$el}"
     elseif haskey(JL_PRIM, bt)
@@ -212,6 +223,7 @@ function julia_wire_type(ctx::Ctx, t)
             get(e, :is_union, false) && return nothing
             return JL_PRIM[String(e.underlying_type.base_type)]
         end
+        override == "float16" && bt == "UShort" && return "Float16"
         return JL_PRIM[bt]
     else
         return nothing                                 # Bool/String/Vector/Binary/Union
@@ -225,7 +237,7 @@ function carrier_field_type(ctx::Ctx, t)
     if bt == "Obj"
         o = ctx.objects[Int(t.index) + 1]
         (haskey(o, :fields) && length(o.fields) == 1 &&
-            (kind_of(String(o.name)) == :component || has_attr(o, "attr.arrow.transparent"))) || return nothing
+            (kind_of(String(o.name)) == :component || _is_transparent(o))) || return nothing
         return carrier_field_type(ctx, o.fields[1].type)
     elseif bt == "String"
         return "String"
@@ -361,7 +373,7 @@ function main()
         startswith(fq, "rerun.components.") || continue          # skip blueprint (avoids short-name clashes)
         (haskey(o, :fields) && length(o.fields) == 1) || continue # transparent component
         short = String(split(fq, '.')[end]); fld = String(o.fields[1].name)
-        jt = julia_wire_type(ctx, o.fields[1].type)
+        jt = julia_wire_type(ctx, o.fields[1].type; override=_override_type(o.fields[1]))
         if jt !== nothing                                         # flat: struct IS the wire layout
             push!(comp_names, short)
             push!(comp_structs, """

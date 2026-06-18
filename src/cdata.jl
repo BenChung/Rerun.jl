@@ -203,6 +203,21 @@ function _drain_exports()
     return
 end
 
+# Release a built-but-UNPUBLISHED array — used when a log/send_columns call fails
+# before rerun takes ownership (otherwise the malloc'd bookkeeping leaks and, for
+# the zero-copy path, the GC root is pinned forever because the release callback
+# that flips its flag never fires). Invoking the array's own release callback does
+# exactly the right cleanup for both kinds (zero-copy: free bookkeeping + flip flag
+# so the next _drain_exports drops the root; owned: free the data buffers too).
+# On the error path rerun did NOT consume the array, so this is not a double-free.
+function _release_unpublished(a::LibRerunC.ArrowArray)
+    a.release == C_NULL && return
+    ref = Ref(a)
+    GC.@preserve ref ccall(a.release, Cvoid, (Ptr{LibRerunC.ArrowArray},),
+                           Base.unsafe_convert(Ptr{LibRerunC.ArrowArray}, ref))
+    return
+end
+
 # A flat (zero-copy-eligible) layout: primitive or fixed-size-list thereof.
 _is_flat(t::ArrowAtom)      = t.tag !== :bool && t.tag !== :null
 _is_flat(t::ArrowFixedList) = _is_flat(t.item.type)
@@ -340,9 +355,13 @@ function _assembled(t::ArrowAtom, data::AbstractVector)
     T = _ATOM_JULIA[t.tag]
     n = length(data)
     vp = Ptr{T}(Libc.malloc(max(n * sizeof(T), 1)))
-    @inbounds for i in 1:n
-        x = data[i]
-        unsafe_store!(vp, x === missing ? zero(T) : convert(T, x), i)   # garbage at null slots
+    try
+        @inbounds for i in 1:n
+            x = data[i]
+            unsafe_store!(vp, x === missing ? zero(T) : convert(T, x), i)   # garbage at null slots
+        end
+    catch
+        Libc.free(vp); rethrow()    # a non-convertible element must not leak the buffer
     end
     vptr, nc = _owned_validity(data)
     return _owned_array(n, 2, _buffers(vptr, Ptr{Cvoid}(vp)), 0, Ptr{Ptr{LibRerunC.ArrowArray}}(C_NULL), nc)
@@ -367,37 +386,83 @@ function _assembled(::Union{ArrowUtf8,ArrowBinary}, data::AbstractVector)
     total = 0; for x in data; x === missing || (total += _nbytes(x)); end
     offp = Ptr{Int32}(Libc.malloc((n + 1) * sizeof(Int32)))
     bufp = Ptr{UInt8}(_mbuf(total))
-    unsafe_store!(offp, Int32(0), 1); acc = 0
-    @inbounds for (i, x) in enumerate(data)
-        if x !== missing
-            nb = _nbytes(x)
-            nb > 0 && GC.@preserve x unsafe_copyto!(bufp + acc, _byteptr(x), nb)
-            acc += nb
+    try
+        unsafe_store!(offp, Int32(0), 1); acc = 0
+        @inbounds for (i, x) in enumerate(data)
+            if x !== missing
+                nb = _nbytes(x)
+                # `_bytes` returns a GC-rootable OBJECT (not a bare pointer): for
+                # String/Vector{UInt8} it aliases the element (zero extra copy);
+                # other string/byte types materialize a temporary that MUST stay
+                # rooted across the copy — hence we preserve `b`, the object, here.
+                if nb > 0
+                    b = _bytes(x)
+                    GC.@preserve b unsafe_copyto!(bufp + acc, pointer(b), nb)
+                end
+                acc += nb
+            end
+            unsafe_store!(offp, Int32(acc), i + 1)
         end
-        unsafe_store!(offp, Int32(acc), i + 1)
+    catch
+        Libc.free(offp); Libc.free(bufp); rethrow()
     end
     vptr, nc = _owned_validity(data)
     return _owned_array(n, 3, _buffers(vptr, Ptr{Cvoid}(offp), Ptr{Cvoid}(bufp)), 0,
         Ptr{Ptr{LibRerunC.ArrowArray}}(C_NULL), nc)
 end
-_byteptr(s::String) = pointer(s)
-_byteptr(v::Vector{UInt8}) = pointer(v)
-_byteptr(x) = pointer(Vector{UInt8}(codeunits(String(x))))   # fallback for other string/byte types
+_bytes(s::String) = s                                  # pointer(s) aliases the String's data
+_bytes(v::Vector{UInt8}) = v
+_bytes(v::AbstractVector{UInt8}) = Vector{UInt8}(v)    # views/etc.: materialize (rooted by caller)
+_bytes(x) = Vector{UInt8}(codeunits(String(x)))        # other string types (e.g. SubString)
 
 # list: [validity, offsets(Int32, n+1)] + 1 child (flattened items); `missing` → empty span
 function _assembled(t::ArrowList, data::AbstractVector)
     n = length(data)
     offp = Ptr{Int32}(Libc.malloc((n + 1) * sizeof(Int32)))
-    unsafe_store!(offp, Int32(0), 1); acc = 0
-    @inbounds for (i, x) in enumerate(data)
-        x === missing || (acc += length(x))
-        unsafe_store!(offp, Int32(acc), i + 1)
-    end
-    flat = collect(Iterators.flatten(x for x in data if x !== missing))
     kids = Ptr{Ptr{LibRerunC.ArrowArray}}(Libc.malloc(sizeof(Ptr)))
-    unsafe_store!(kids, _child_ptr(_assembled(t.item.type, flat)), 1)
+    try
+        unsafe_store!(offp, Int32(0), 1); acc = 0
+        @inbounds for (i, x) in enumerate(data)
+            x === missing || (acc += length(x))
+            unsafe_store!(offp, Int32(acc), i + 1)
+        end
+        flat = collect(Iterators.flatten(x for x in data if x !== missing))
+        unsafe_store!(kids, _child_ptr(_assembled(t.item.type, flat)), 1)   # child cleans itself if it throws
+    catch
+        Libc.free(offp); Libc.free(kids); rethrow()
+    end
     vptr, nc = _owned_validity(data)
     return _owned_array(n, 2, _buffers(vptr, Ptr{Cvoid}(offp)), 1, kids, nc)
+end
+
+# fixed-size list: [validity] + 1 child of n*k items (NO offsets buffer). A null
+# parent slot still occupies k child slots to preserve the fixed stride. Reached
+# only for an FSL nested in a non-flat parent (struct/list/union) — e.g. the
+# `axis` field of RotationAxisAngle; a top-level FSL-of-flat component is zero-copy.
+function _assembled(t::ArrowFixedList, data::AbstractVector)
+    n = length(data); k = t.n
+    if Missing <: eltype(data) && any(x -> x === missing, data)
+        flat = Vector{Any}(undef, n * k); idx = 0                  # rare: zero-fill null slots
+        @inbounds for x in data
+            if x === missing
+                for _ in 1:k; idx += 1; flat[idx] = missing; end
+            else
+                length(x) == k || error("fixed-size-list element has $(length(x)) items, expected $k")
+                for v in x; idx += 1; flat[idx] = v; end
+            end
+        end
+    else
+        flat = collect(Iterators.flatten(data))
+        length(flat) == n * k || error("each fixed-size-list element must have exactly $k items")
+    end
+    kids = Ptr{Ptr{LibRerunC.ArrowArray}}(Libc.malloc(sizeof(Ptr)))
+    try
+        unsafe_store!(kids, _child_ptr(_assembled(t.item.type, flat)), 1)
+    catch
+        Libc.free(kids); rethrow()
+    end
+    vptr, nc = _owned_validity(data)
+    return _owned_array(n, 1, _buffers(vptr), 1, kids, nc)
 end
 
 # struct: [validity] + one columnar child per field
@@ -406,10 +471,17 @@ function _assembled(t::ArrowStruct, data::AbstractVector)
         error("missing struct elements aren't supported yet (assembled-path struct validity)")
     n = length(data); nc = length(t.fields)
     kids = Ptr{Ptr{LibRerunC.ArrowArray}}(Libc.malloc(sizeof(Ptr) * nc))
-    for (j, f) in enumerate(t.fields)
-        sym = Symbol(f.name)
-        col = [getfield(x, sym) for x in data]
-        unsafe_store!(kids, _child_ptr(_assembled(f.type, col)), j)
+    built = 0
+    try
+        for (j, f) in enumerate(t.fields)
+            sym = Symbol(f.name)
+            col = [getfield(x, sym) for x in data]
+            unsafe_store!(kids, _child_ptr(_assembled(f.type, col)), j)
+            built = j
+        end
+    catch
+        for j in 1:built; cp = unsafe_load(kids, j); _release_array_owned(cp); Libc.free(cp); end
+        Libc.free(kids); rethrow()
     end
     return _owned_array(n, 1, _buffers(C_NULL), nc, kids)
 end
@@ -459,8 +531,15 @@ function _assembled(t::ArrowUnion, data::AbstractVector)
         push!(buckets[v], _union_payload(x))
     end
     kids = Ptr{Ptr{LibRerunC.ArrowArray}}(Libc.malloc(sizeof(Ptr) * nv))
-    for v in 1:nv
-        unsafe_store!(kids, _child_ptr(_assembled(t.fields[v].type, buckets[v])), v)
+    built = 0
+    try
+        for v in 1:nv
+            unsafe_store!(kids, _child_ptr(_assembled(t.fields[v].type, buckets[v])), v)
+            built = v
+        end
+    catch
+        for v in 1:built; cp = unsafe_load(kids, v); _release_array_owned(cp); Libc.free(cp); end
+        Libc.free(kids); rethrow()
     end
     tp = Ptr{Int8}(Libc.malloc(max(n, 1)));      n > 0 && GC.@preserve types   unsafe_copyto!(tp, pointer(types), n)
     op = Ptr{Int32}(Libc.malloc(max(n, 1) * 4)); n > 0 && GC.@preserve offsets unsafe_copyto!(op, pointer(offsets), n)

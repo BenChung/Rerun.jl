@@ -266,12 +266,20 @@ end
     batches = map(specs) do s
         LibRerunC.rr_component_batch(s[1], _build_component_array(s[2], s[3]))
     end
-    bref = Ref(batches)
-    ep = String(entity_path)
-    GC.@preserve bref ep begin
-        pb = Ptr{LibRerunC.rr_component_batch}(Base.unsafe_convert(Ptr{typeof(batches)}, bref))
-        row = LibRerunC.rr_data_row(_rrstr(ep), UInt32(length(specs)), pb)
-        checked(err -> LibRerunC.rr_recording_stream_log(r.handle, row, inject_time, err))
+    try
+        bref = Ref(batches)
+        ep = String(entity_path)
+        GC.@preserve bref ep begin
+            pb = Ptr{LibRerunC.rr_component_batch}(Base.unsafe_convert(Ptr{typeof(batches)}, bref))
+            row = LibRerunC.rr_data_row(_rrstr(ep), UInt32(length(specs)), pb)
+            checked(err -> LibRerunC.rr_recording_stream_log(r.handle, row, inject_time, err))
+        end
+    catch
+        # The log failed -> rerun never took ownership, so its release callback will
+        # never fire. Release the built arrays ourselves (frees C bookkeeping and
+        # unpins zero-copy roots) instead of leaking them and the GC roots forever.
+        for b in batches; _release_unpublished(b.array); end
+        rethrow()
     end
     return r
 end

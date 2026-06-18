@@ -7,8 +7,37 @@ authors = ["Benjamin Chung <ckfinite@gmail.com>"]
 CEnum = "fa961155-64e5-5f13-b03f-caf6b980ea82"
 librerun_c_jll = "1148ce26-83e7-5eb1-970b-19db2de75e6d"
 
+[weakdeps]
+ColorTypes = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
+CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
+GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
+ImageCore = "a09fc81d-aa75-5fe9-8630-4744c3626534"
+Meshes = "eacbb407-ea5a-433e-ab97-5258b1ca43fa"
+Quaternions = "94ee1d12-ae83-5a48-8b1c-48b8ff168ae0"
+Rotations = "6038ab10-8711-5258-84ad-4b1120ba62dc"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[extensions]
+RerunColorTypesExt = "ColorTypes"
+RerunCoordinateTransformationsExt = "CoordinateTransformations"
+RerunGeometryBasicsExt = ["GeometryBasics", "StaticArrays"]
+RerunImageCoreExt = ["ImageCore", "ColorTypes"]
+RerunMeshesExt = "Meshes"
+RerunQuaternionsExt = "Quaternions"
+RerunRotationsExt = "Rotations"
+RerunStaticArraysExt = "StaticArrays"
+
 [compat]
 CEnum = "0.5.0"
+ColorTypes = "0.11, 0.12, 1"
+CoordinateTransformations = "0.6"
+GeometryBasics = "0.4, 0.5"
+ImageCore = "0.10"
+Meshes = "0.57"
+Quaternions = "0.7"
+Rotations = "1"
+StaticArrays = "1"
+julia = "1.9"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

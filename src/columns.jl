@@ -60,25 +60,47 @@ function _zerocopy_list_column(handle, t::ArrowType, flat::AbstractVector, offse
     return LibRerunC.rr_component_column(handle, list)
 end
 
+# Unwrap a carrier component vector (Text/Blob/…) to its wire payload, mirroring
+# _build_component_array; the identity for flat components and a no-op for the
+# string-keyed API (where `data` is already wire-shaped, not Components).
+_carrier_payload(data::AbstractVector) =
+    eltype(data) <: Union{Component,Missing} ?
+        _payload(Base.nonmissingtype(eltype(data)), data) : data
+
+# List<component> with one instance per row (offsets 0,1,…,R).
+function _mono_column(handle, t::ArrowType, data::AbstractVector)
+    R = length(data)
+    _is_flat(t) && return _zerocopy_list_column(handle, t, data, Int32.(0:R))
+    return LibRerunC.rr_component_column(handle,
+        _assembled(ArrowList(ArrowField("item", t, false)), [data[i:i] for i in 1:R]))
+end
+
+# List<component> where each row is a batch of instances.
+function _multi_column(handle, t::ArrowType, data::AbstractVector)
+    R = length(data)
+    offsets = Vector{Int32}(undef, R + 1); offsets[1] = 0
+    @inbounds for i in 1:R; offsets[i+1] = offsets[i] + Int32(length(data[i])); end
+    _is_flat(t) && return _zerocopy_list_column(handle, t, collect(Iterators.flatten(data)), offsets)
+    return LibRerunC.rr_component_column(handle,
+        _assembled(ArrowList(ArrowField("item", t, false)), data))
+end
+
 function _component_column(c::Pair)
     handle, t = _resolve_component(first(c))
     data = last(c)
-    if eltype(data) <: AbstractVector            # multi: each element is a row's batch
-        R = length(data)
-        offsets = Vector{Int32}(undef, R + 1); offsets[1] = 0
-        @inbounds for i in 1:R; offsets[i+1] = offsets[i] + Int32(length(data[i])); end
-        if _is_flat(t)
-            return _zerocopy_list_column(handle, t, collect(Iterators.flatten(data)), offsets)
-        else
-            return LibRerunC.rr_component_column(handle, _assembled(ArrowList(ArrowField("item", t, false)), data))
-        end
-    else                                          # mono: one instance per row
-        R = length(data)
-        if _is_flat(t)
-            return _zerocopy_list_column(handle, t, data, Int32.(0:R))
-        else
-            return LibRerunC.rr_component_column(handle, _assembled(ArrowList(ArrowField("item", t, false)), [data[i:i] for i in 1:R]))
-        end
+    # Decide mono-vs-multi from the ORIGINAL element type, THEN unwrap carriers to
+    # their wire payload — a component struct is one instance/row even when its
+    # payload is itself a vector (Blob -> Vector{UInt8}). Without this unwrap a
+    # typed carrier column (Text/Blob/…) would crash, unlike the matching `log`.
+    if eltype(data) <: Union{Component,Missing}                          # typed, one/row
+        return _mono_column(handle, t, _carrier_payload(data))
+    elseif eltype(data) <: AbstractVector &&
+           eltype(eltype(data)) <: Union{Component,Missing}              # typed, batch/row
+        return _multi_column(handle, t, [_carrier_payload(row) for row in data])
+    elseif eltype(data) <: AbstractVector                                # string API, batch/row
+        return _multi_column(handle, t, data)
+    else                                                                  # string API, one/row
+        return _mono_column(handle, t, data)
     end
 end
 
@@ -96,12 +118,21 @@ function send_columns(r::RecordingStream, entity_path::AbstractString, timelines
     _drain_exports()
     tcs   = TimeColumn[_astimecolumn(t) for t in timelines]   # keeps the name Strings alive
     tcols = LibRerunC.rr_time_column[_time_column(tc) for tc in tcs]
-    ccols = LibRerunC.rr_component_column[_component_column(c) for c in columns]
-    GC.@preserve tcs tcols ccols begin
-        checked(err -> LibRerunC.rr_recording_stream_send_columns(
-            r.handle, entity_path,
-            pointer(tcols), UInt32(length(tcols)),
-            pointer(ccols), UInt32(length(ccols)), err))
+    local ccols
+    try
+        ccols = LibRerunC.rr_component_column[_component_column(c) for c in columns]
+        GC.@preserve tcs tcols ccols begin
+            checked(err -> LibRerunC.rr_recording_stream_send_columns(
+                r.handle, entity_path,
+                pointer(tcols), UInt32(length(tcols)),
+                pointer(ccols), UInt32(length(ccols)), err))
+        end
+    catch
+        # Build/send failed -> rerun never took ownership, so release the built
+        # column arrays ourselves (free C bookkeeping, unpin zero-copy roots).
+        for tc in tcols; _release_unpublished(tc.array); end
+        @isdefined(ccols) && for cc in ccols; _release_unpublished(cc.array); end
+        rethrow()
     end
     return r
 end

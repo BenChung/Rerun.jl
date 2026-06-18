@@ -48,9 +48,10 @@ struct rr_bytes
     length::UInt32
 end
 
-function rr_make_string(utf8)
-    ccall((:rr_make_string, librerun_c), rr_string, (Ptr{Cchar},), utf8)
-end
+# NOTE: rr_make_string is intentionally NOT bound — it is a header-only inline in
+# rerun.h with no exported symbol in librerun_c.so, so a ccall to it fails at
+# runtime. String marshalling is done in src/marshal.jl. (Excluded via
+# output_ignorelist in gen/generator.toml.)
 
 const rr_store_kind = UInt32
 
