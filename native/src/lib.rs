@@ -5,7 +5,7 @@
 //! Phase 1 (this file): in-process `QueryEngine` over an in-memory `ChunkStore`.
 //! Streaming forward cursor — `load → select → reader`, one batch per `next`.
 
-use std::ffi::{CStr, c_char};
+use std::ffi::{CStr, CString, c_char};
 use std::os::raw::c_int;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
@@ -58,6 +58,7 @@ fn set_error(err: *mut RrqError, code: u32, msg: &str) {
 // ---------------------------------------------------------------------------
 pub struct RrqEngine {
     engine: QueryEngine<StorageEngine>,
+    summary: CString, // one-line description for pretty-printing
 }
 
 pub struct RrqQuery {
@@ -86,7 +87,27 @@ fn load_impl(path: &str) -> anyhow::Result<*mut RrqEngine> {
         anyhow::bail!("expected exactly one recording in {path:?}, found {n}");
     }
     let engine = engines.into_values().next().expect("len checked == 1");
-    Ok(Box::into_raw(Box::new(RrqEngine { engine })))
+    let summary = describe(&engine);
+    Ok(Box::into_raw(Box::new(RrqEngine { engine, summary })))
+}
+
+/// One-line recording description: `"app_id" (recording_id) — N entities, M timelines: ...`.
+fn describe(engine: &QueryEngine<StorageEngine>) -> CString {
+    use re_query::StorageEngineLike as _;
+    let text = engine.engine.with(|store, _cache| {
+        let id = store.id();
+        let timelines = store.schema().timelines();
+        let names: Vec<String> = timelines.keys().map(|t| t.to_string()).collect();
+        format!(
+            "{:?} ({}) — {} entities, {} timelines: {}",
+            id.application_id().as_str(),
+            id.recording_id().as_str(),
+            store.all_entities().len(),
+            names.len(),
+            if names.is_empty() { "(none)".to_owned() } else { names.join(", ") },
+        )
+    });
+    CString::new(text).unwrap_or_else(|_| CString::new("recording").expect("no NUL"))
 }
 
 /// Loads an `.rrd` and returns a handle to its single recording's query engine.
@@ -108,6 +129,15 @@ pub extern "C" fn rrq_load_recording(path: *const c_char, err: *mut RrqError) ->
             set_error(err, RRQ_ERR_PANIC, "panic in rrq_load_recording");
             ptr::null_mut()
         }
+    }
+}
+
+/// Borrows the recording's one-line summary (valid for the engine's lifetime).
+#[no_mangle]
+pub extern "C" fn rrq_recording_summary(engine: *const RrqEngine) -> *const c_char {
+    match unsafe { engine.as_ref() } {
+        Some(e) => e.summary.as_ptr(),
+        None => ptr::null(),
     }
 }
 

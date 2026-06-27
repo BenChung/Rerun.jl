@@ -14,6 +14,7 @@ const FEATURED = [
     ("components_tour", "A tour of components"),
     ("timeseries",      "Scalar time series"),
     ("tensor",          "Tensors & heatmaps"),
+    ("dataframe",       "Reading data out as a DataFrame"),
 ]
 
 function generate_example(name, title)

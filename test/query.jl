@@ -55,6 +55,14 @@ end
         @test_throws KeyError Tables.getcolumn(cols, :does_not_exist)
     end
 
+    @testset "recording pretty-printing" begin
+        s = sprint(show, MIME("text/plain"), rec)
+        @test occursin("Rerun.Recording", s)
+        @test occursin("entities", s) && occursin("timelines", s)
+        @test occursin(out, s)                          # the .rrd path is shown
+        @test occursin("Recording(", sprint(show, rec)) # compact form
+    end
+
     @testset "timestamp index timeline decodes (temporal -> Int64)" begin
         rect = RecordingStream("rrq_ts_test")
         outt = tempname() * ".rrd"

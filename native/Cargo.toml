@@ -22,3 +22,6 @@ rerun  = { version = "0.33", default-features = false, features = ["dataframe"] 
 # major changes.
 arrow  = { version = "57", default-features = false, features = ["ffi"] }
 anyhow = "1"
+# Metadata only (recording summary for pretty-printing) — reaches the ChunkStore
+# behind the QueryEngine via StorageEngineLike. Same 0.33 line as rerun's re_query.
+re_query = "0.33"

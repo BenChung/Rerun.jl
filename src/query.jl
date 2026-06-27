@@ -36,10 +36,12 @@ _empty_aa() = _AA(0, 0, 0, 0, 0, C_NULL, C_NULL, C_NULL, C_NULL, C_NULL)
 # ---------------------------------------------------------------------------
 # handles
 # ---------------------------------------------------------------------------
+"A loaded Rerun recording, queryable with [`view`](@ref) and [`select`](@ref)."
 mutable struct Recording
     ptr::Ptr{Cvoid}
-    function Recording(ptr::Ptr{Cvoid})
-        rec = new(ptr)
+    path::String
+    function Recording(ptr::Ptr{Cvoid}, path::AbstractString)
+        rec = new(ptr, String(path))
         finalizer(rec) do r
             r.ptr == C_NULL || ccall((:rrq_engine_free, _LIB), Cvoid, (Ptr{Cvoid},), r.ptr)
             r.ptr = C_NULL
@@ -47,6 +49,16 @@ mutable struct Recording
         rec
     end
 end
+
+function Base.show(io::IO, ::MIME"text/plain", r::Recording)
+    if r.ptr == C_NULL
+        print(io, "Rerun.Recording(<freed>)")
+        return
+    end
+    summary = unsafe_string(ccall((:rrq_recording_summary, _LIB), Cstring, (Ptr{Cvoid},), r.ptr))
+    print(io, "Rerun.Recording: ", summary, " (", r.path, ")")
+end
+Base.show(io::IO, r::Recording) = print(io, "Rerun.Recording(", repr(r.path), ")")
 
 mutable struct RecordingView
     rec::Recording        # keeps the engine alive
@@ -70,7 +82,7 @@ function load_recording(path::AbstractString)
     err = Ref(_RrqError())
     p = ccall((:rrq_load_recording, _LIB), Ptr{Cvoid}, (Cstring, Ptr{_RrqError}), path, err)
     p == C_NULL && _check(err, "load_recording")
-    Recording(p)
+    Recording(p, path)
 end
 
 """
