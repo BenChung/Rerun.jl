@@ -1,0 +1,5 @@
+/target
+/dev-prefix
+# Cargo.lock IS committed: this crate is a distributed cdylib, so the lockfile
+# pins transitive deps for reproducible JLL builds.
+

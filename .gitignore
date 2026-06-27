@@ -1,1 +1,5 @@
 /Manifest.toml
+/docs/Manifest.toml
+/docs/build/
+# generated from examples/*.jl by docs/make.jl
+/docs/src/examples/

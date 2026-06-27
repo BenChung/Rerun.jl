@@ -1,0 +1,24 @@
+[package]
+name = "rerun_query"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "C-ABI shim exposing Rerun's dataframe query engine as an Arrow C Stream"
+
+[lib]
+name = "rerun_query"          # -> librerun_query.{so,dylib} (rerun_query.dll on Windows)
+crate-type = ["cdylib"]
+
+[dependencies]
+# Target the DOCUMENTED Rust surface (docs.rs/rerun/latest/rerun/dataframe), not
+# the internal re_* crates, so internal reshuffles (e.g. QueryEngine moving
+# re_dataframe -> re_chunk_store on main) don't break us. Pinned to 0.33 — the
+# rerun release librerun_c is built from.
+rerun  = { version = "0.33", default-features = false, features = ["dataframe"] }
+# arrow 57 matches what rerun 0.33 re-exports; the major MUST stay in lockstep
+# with rerun's arrow major or RecordBatch / FFI types won't unify across the FFI
+# seam (two arrow crates in the graph). Bump this whenever the rerun pin's arrow
+# major changes.
+arrow  = { version = "57", default-features = false, features = ["ffi"] }
+anyhow = "1"
