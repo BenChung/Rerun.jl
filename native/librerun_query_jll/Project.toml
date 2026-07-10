@@ -1,5 +1,5 @@
 name = "librerun_query_jll"
-uuid = "4b6a62bb-3f1a-52bf-b7aa-9d1aab094d0a"
+uuid = "86745212-9865-526f-ad33-9417c6678a0c"
 version = "0.1.0+0"
 
 [deps]

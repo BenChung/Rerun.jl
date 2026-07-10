@@ -1,47 +1,22 @@
-# RerunMeshesExt — Rerun.jl package extension for Meshes.jl (JuliaGeometry).
+# RerunMeshesExt — maps Meshes.jl (JuliaGeometry) geometries to Rerun
+# archetypes. Extension convention: see RerunStaticArraysExt.jl.
 #
-# Follows the convention established by RerunStaticArraysExt (read that file
-# first). Two rules dominate:
-#
-#   1. NO TYPE PIRACY. Every method here attaches either to `Rerun.log` or to a
-#      constructor of a `Rerun.Components.*` / `Rerun.Archetypes.*` type
-#      (functions/types OWNED by Rerun) and dispatches on a type OWNED by Meshes
-#      (`Meshes.Point`, `Meshes.Segment`, `Meshes.SimpleMesh`, ...). We never
-#      define a method whose function AND all argument types are foreign.
-#
-#   2. NO ZERO-COPY HERE. Meshes geometries are NOT wire-shaped: a `Meshes.Point`
-#      is its own CRS-aware struct (NOT a `StaticVector`), its coordinates are
-#      `Float64` by default and may carry Unitful units. So there is NO exact
-#      bit-layout match with Rerun's `Float32` components. Every mapping in this
-#      file therefore CONVERTS (extract coords -> `ustrip` -> `Float32`), which
-#      COPIES. (Contrast: the StaticArrays ext is zero-copy because a
-#      `StaticVector{3,Float32}` IS the wire layout.)
-#
-# RESPONSIBILITY SPLIT: Meshes owns ITS types only. `Meshes.Point` is not a
-# `StaticVector`, so there is no overlap with the StaticArrays or GeometryBasics
-# exts; Meshes owns its full conversion (coordinate extraction included).
-#
-# API DEFENSIVENESS: Meshes' public API has shifted across versions. We funnel
-# all coordinate extraction through one helper (`_coords`) built on the stable
-# trio `to` / `ustrip` / `embeddim`, and all connectivity extraction through
-# `topology` + `elements` + `indices`. If a future Meshes renames these, the
-# failure is localized to the helper, not scattered across every mapping.
+# A `Meshes.Point` is a CRS-aware struct with Float64 (possibly Unitful)
+# coordinates, so every mapping converts to Float32 and copies. Meshes' API has
+# shifted across versions, so coordinate extraction funnels through `_coords*`
+# (built on the stable `to`/`embeddim`) and connectivity through
+# `topology`/`elements`/`indices` — a future rename breaks one helper, not
+# every mapping.
 module RerunMeshesExt
 
 using Rerun
 using Meshes
 
-# Rerun-owned component/archetype types we target. Adding methods to these is
-# not piracy — Rerun owns them.
 using Rerun.Components: Position2D, Position3D, HalfSize3D, TriangleIndices
 using Rerun.Archetypes: Points2D, Points3D, LineStrips2D, LineStrips3D,
                         Mesh3D, Boxes3D, Ellipsoids3D
 
-# ---------------------------------------------------------------------------
-# Layout invariants (precompile-time, off the hot path). These document the
-# shapes the conversions below build into. Not zero-copy guards (nothing here is
-# zero-copy) — just a tripwire if a schema regen changes a wire layout.
-# ---------------------------------------------------------------------------
+# Wire-layout tripwires: a schema regen that changes a layout fails precompile here.
 @assert isbitstype(Position2D)
 @assert isbitstype(Position3D)
 @assert isbitstype(HalfSize3D)
@@ -50,69 +25,34 @@ using Rerun.Archetypes: Points2D, Points3D, LineStrips2D, LineStrips3D,
 @assert sizeof(HalfSize3D)     == 3 * sizeof(Float32)
 @assert sizeof(TriangleIndices) == 3 * sizeof(UInt32)
 
-# ===========================================================================
-# Coordinate extraction — the single defensive choke point.
-#
-# `to(p)` returns the coordinate vector of a Meshes.Point (displacement from the
-# origin). Elements may be Unitful quantities, so we strip units, then narrow to
-# Float32. Works for 2D and 3D points alike; `embeddim(p)` tells us which.
-# This COPIES (Float64/Unitful -> Float32). There is no zero-copy path for
-# Meshes points.
-#
-# UNIT STRIPPING WITHOUT A UNITFUL DEPENDENCY: Meshes does `using Unitful` but
-# does NOT re-export `ustrip`, and Rerun does not depend on Unitful. Dividing by
-# `oneunit(x)` cancels the unit of a `Unitful.Quantity` (yielding a bare number)
-# and is a no-op for a plain `Real` (`oneunit(1.0) === 1.0`). This is the
-# idiomatic dependency-free unit strip and keeps this ext from needing Unitful.
-# ===========================================================================
-
+# `to(p)` is the coordinate vector; elements may be Unitful quantities.
+# Dividing by `oneunit(x)` cancels the unit (and is the identity for plain
+# Reals), which strips units without a Unitful dependency.
 @inline _f32(x) = Float32(x / oneunit(x))
 
-# NTuple{2,Float32} / NTuple{3,Float32} from a Meshes.Point's coordinates.
 @inline function _coords2(p::Meshes.Point)
     c = Meshes.to(p)
     return (_f32(c[1]), _f32(c[2]))
 end
-# 3D coords; a 2D point is lifted to the z=0 plane so 2D polygons can feed the
-# 3D-only Mesh3D archetype.
+# A 2D point lifts to z=0 so 2D polygons can feed the 3D-only Mesh3D archetype.
 @inline function _coords3(p::Meshes.Point)
     c = Meshes.to(p)
     return length(c) >= 3 ? (_f32(c[1]), _f32(c[2]), _f32(c[3])) :
                             (_f32(c[1]), _f32(c[2]), 0f0)
 end
 
-# ===========================================================================
-# Scalar component constructors: Rerun.Components.<C>(::Meshes.Point)
-#
-# Method on a Rerun-owned constructor dispatching on a Meshes-owned type. These
-# CONVERT (copy) coords to Float32.
-# ===========================================================================
-
-# Qualify the method target (`Rerun.Components.PositionND`) so Julia 1.12 does
-# not warn about extending a constructor brought in via `using` while Meshes is
-# also in scope.
+# Qualified method targets so Julia 1.12 does not warn about extending a
+# constructor brought in via `using`.
 Rerun.Components.Position2D(p::Meshes.Point) = Position2D(_coords2(p))
 Rerun.Components.Position3D(p::Meshes.Point) = Position3D(_coords3(p))
 
-# ===========================================================================
-# Per-geometry helpers that build vectors of Rerun components (all COPY).
-# ===========================================================================
-
-# Vector{Position3D} from any iterable of Meshes.Points.
+# Component-vector builders (Float32 copies).
 _positions3(pts) = Position3D[Position3D(_coords3(p)) for p in pts]
 _positions2(pts) = Position2D[Position2D(_coords2(p)) for p in pts]
-
-# A single LineStrip3D value (Vector{NTuple{3,Float32}}) from Meshes.Points.
 _strip3(pts) = NTuple{3,Float32}[_coords3(p) for p in pts]
 _strip2(pts) = NTuple{2,Float32}[_coords2(p) for p in pts]
 
-# ===========================================================================
-# Point -> Position2D / Position3D batch log sugar.
-#
-# Bare-vector default is POSITIONS (per the shared convention). A vector of
-# Meshes.Points logs as Points-flavored positions. We pick 2D vs 3D from the
-# element's embedding dimension. CONVERTS (copies) to Float32.
-# ===========================================================================
+# A bare vector of points logs as positions; 2D vs 3D from the embedding dimension.
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
                    pts::AbstractVector{<:Meshes.Point}; inject_time::Bool=true)
@@ -130,16 +70,9 @@ function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
     Rerun.log(r, entity_path, [p]; inject_time=inject_time)
 end
 
-# ===========================================================================
-# Polyline geometries -> LineStrips2D / LineStrips3D.
-#
-# Segment (2 vertices), Rope (open chain), Ring (closed chain — we append the
-# first vertex to close it visually). Each becomes ONE strip. CONVERTS (copies).
-#
-# `Meshes.Polytope`-with-`vertices` covers Segment/Rope/Ring uniformly. We
-# dispatch on the concrete Meshes types so we don't accidentally capture
-# polygons/meshes.
-# ===========================================================================
+# Segment, Rope (open), and Ring (closed — append the first vertex) each log
+# as one strip. Dispatch is on the concrete types so polygons/meshes stay with
+# their own methods.
 
 _is3d(g) = Meshes.embeddim(g) == 3
 
@@ -178,15 +111,8 @@ Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, g::Meshes.Ring;
           inject_time::Bool=true) =
     _log_one_strip(r, entity_path, g; close=true, inject_time=inject_time)
 
-# ===========================================================================
-# Triangle / Ngon -> Mesh3D (single polygon, fan-triangulated).
-#
-# A polygon's own vertices become the Mesh3D vertex_positions; the triangle
-# faces fan from vertex 0: (0,1,2),(0,2,3),... 0-BASED (Rerun is 0-based;
-# this local fan is already 0-based). CONVERTS (copies).
-# ===========================================================================
-
-# Fan-triangulate n local 0-based vertices -> Vector{TriangleIndices}.
+# A single polygon fan-triangulates from vertex 0: (0,1,2),(0,2,3),... —
+# already 0-based.
 function _fan_faces(n::Integer)
     n < 3 && return TriangleIndices[]
     faces = Vector{TriangleIndices}(undef, n - 2)
@@ -211,23 +137,15 @@ Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, g::Meshes.Ngon;
           inject_time::Bool=true) =
     Rerun.log(r, entity_path, _polygon_mesh(g); inject_time=inject_time)
 
-# ===========================================================================
-# SimpleMesh -> Mesh3D.
-#
-# vertices(mesh) -> vertex_positions (converted to Float32 Position3D, COPY).
-# topology(mesh) -> elements; each element's `indices` is a 1-BASED vertex-index
-# tuple. THE GOTCHA: Meshes is 1-based, Rerun is 0-based, so we subtract 1.
-# Non-triangle elements (quads, ngons) are fan-triangulated in GLOBAL mesh-index
-# space. CONVERTS (copies) both positions and indices.
-# ===========================================================================
-
-# 1-based global vertex-index tuple -> 0-based Rerun TriangleIndices, fan-split.
+# SimpleMesh -> Mesh3D. The trap: Meshes vertex indices are 1-based, Rerun's
+# 0-based — subtract one. Non-triangle elements fan-triangulate in global
+# index space.
 function _faces_from_indices(idx)
-    inds = collect(idx)              # 1-based global vertex indices
+    inds = collect(idx)
     n = length(inds)
     n < 3 && return TriangleIndices[]
     faces = Vector{TriangleIndices}(undef, n - 2)
-    # Fan from the first vertex; convert 1-based -> 0-based (subtract 1).
+    # Fan from the first vertex; 1-based -> 0-based.
     i0 = UInt32(inds[1] - 1)
     @inbounds for k in 1:(n - 2)
         faces[k] = TriangleIndices((i0,
@@ -251,19 +169,10 @@ Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, m::Meshes.Simpl
           inject_time::Bool=true) =
     Rerun.log(r, entity_path, _simplemesh_mesh3d(m); inject_time=inject_time)
 
-# ===========================================================================
-# Box -> Boxes3D (center + half-size).
-#
-# Meshes.Box exposes minimum/maximum corners. Rerun Boxes3D wants a CENTER and a
-# HALF-SIZE (NOT min/max, NOT full size). THE GOTCHA:
-#   center    = (min + max) / 2
-#   half_size = (max - min) / 2
-# CONVERTS (copies) to Float32. The `Rerun.log` method below rejects non-3D boxes.
-# ===========================================================================
-
+# Meshes.Box exposes min/max corners; Rerun boxes store center + half-size:
+# center = (min+max)/2, half_size = (max-min)/2.
 function _box_center_halfsize(b::Meshes.Box)
-    # `minimum`/`maximum` are Base functions that Meshes extends for Box — they
-    # return the lower/upper corner Points.
+    # Base minimum/maximum, extended by Meshes to return the corner Points.
     lo = Meshes.to(minimum(b))
     hi = Meshes.to(maximum(b))
     center = ntuple(i -> (_f32(lo[i]) + _f32(hi[i])) / 2f0, 3)
@@ -279,12 +188,7 @@ function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, b::Mes
     Rerun.log(r, entity_path, Boxes3D([h]; centers=[c]); inject_time=inject_time)
 end
 
-# ===========================================================================
-# Ball / Sphere -> Ellipsoids3D (center + equal half-sizes = radius).
-#
-# An Ellipsoids3D with half_size (r,r,r) is a sphere. center(g) and radius(g)
-# are the stable accessors. CONVERTS (copies) to Float32.
-# ===========================================================================
+# Ball/Sphere -> Ellipsoids3D with half_size (r,r,r).
 
 function _sphere_center_radius(g)
     c = Meshes.to(Meshes.center(g))
