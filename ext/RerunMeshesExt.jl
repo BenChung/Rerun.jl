@@ -14,8 +14,8 @@
 #      `Float64` by default and may carry Unitful units. So there is NO exact
 #      bit-layout match with Rerun's `Float32` components. Every mapping in this
 #      file therefore CONVERTS (extract coords -> `ustrip` -> `Float32`), which
-#      COPIES. This is documented per-method. (Contrast: the StaticArrays ext is
-#      zero-copy because a `StaticVector{3,Float32}` IS the wire layout.)
+#      COPIES. (Contrast: the StaticArrays ext is zero-copy because a
+#      `StaticVector{3,Float32}` IS the wire layout.)
 #
 # RESPONSIBILITY SPLIT: Meshes owns ITS types only. `Meshes.Point` is not a
 # `StaticVector`, so there is no overlap with the StaticArrays or GeometryBasics

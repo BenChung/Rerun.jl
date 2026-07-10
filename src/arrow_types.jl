@@ -42,7 +42,7 @@ struct ArrowUnion <: ArrowType
     sparse::Bool
 end
 
-# --- C Data Interface format strings (Arrow spec, not Rerun-specific) ---
+# --- C Data Interface format strings, defined by the Arrow spec ---
 const _ATOM_FORMAT = Dict(
     :null=>"n", :bool=>"b",
     :i8=>"c", :u8=>"C", :i16=>"s", :u16=>"S", :i32=>"i", :u32=>"I",

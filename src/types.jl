@@ -9,7 +9,7 @@ abstract type Archetype end
 
 # --- generated per concrete type ---
 function componenttype end   # ::Type{<:Component} -> String   (e.g. "rerun.components.Position3D")
-function arrowtype end        # ::Type{<:Component} -> ArrowType (a `const`, not reconstructed)
+function arrowtype end        # ::Type{<:Component} -> ArrowType (a compile-time `const`)
 function handleref end         # ::Type{<:Component} -> Ref{handle} (per-type registration cache)
 
 # Register-once, then read the per-type handle cache (no Dict/lock on the hot path).

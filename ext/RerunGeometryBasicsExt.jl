@@ -27,9 +27,8 @@ module RerunGeometryBasicsExt
 
 using Rerun
 using GeometryBasics
-# StaticArrays is also a weakdep of this ext (Point <: StaticVector). We do not
-# add StaticVector methods here, but having it loaded guarantees the StaticArrays
-# ext is active so the point batches below reinterpret zero-copy.
+# StaticArrays is also a weakdep (Point <: StaticVector). Loading it activates
+# the StaticArrays ext, so the point batches below reinterpret zero-copy.
 using StaticArrays
 
 # `import` (not `using`): HalfSize2D/HalfSize3D/Translation3D constructors are
@@ -40,7 +39,7 @@ using Rerun.Archetypes: Boxes2D, Boxes3D, LineStrips2D, LineStrips3D, Mesh3D,
     Ellipsoids3D
 
 # ---------------------------------------------------------------------------
-# Layout invariants (checked at precompile time, not the hot path). These pin
+# Layout invariants (checked at precompile time, off the hot path). These pin
 # the wire layouts the conversions below assume; a schema regen that changes a
 # layout fails precompilation here instead of corrupting data silently.
 # ---------------------------------------------------------------------------
@@ -244,10 +243,10 @@ function _ellipsoids(spheres)
     Ellipsoids3D(half; centers=cen)
 end
 
-# NOTE: Cylinder -> Capsules3D is intentionally NOT implemented. A GeometryBasics
-# `Cylinder` is a flat-capped cylinder (origin/extremity + radius), whereas Rerun
+# NOTE: Cylinder -> Capsules3D is intentionally omitted. A GeometryBasics
+# `Cylinder` is a flat-capped cylinder (origin/extremity + radius); Rerun
 # `Capsules3D` describes hemispherical-capped capsules (length + radius along an
-# axis with a translation/rotation). The geometry does not match, so emitting a
-# Capsule would misrepresent the shape, so this mapping is omitted.
+# axis with a translation/rotation). The geometries differ, so a Capsule would
+# misrepresent the shape.
 
 end # module RerunGeometryBasicsExt

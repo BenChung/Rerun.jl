@@ -7,7 +7,6 @@ using StaticArrays
 using Test
 
 @testset "RerunStaticArraysExt" begin
-    # The extension must actually be loaded (StaticArrays + Rerun both present).
     @test Base.get_extension(Rerun, :RerunStaticArraysExt) !== nothing
 
     @testset "scalar constructors" begin
@@ -76,8 +75,8 @@ using Test
         Rerun.log(rec, "p2", pts2)
         Rerun.log(rec, "p3d", pts3d)
 
-        # Explicit interop form for vectors/normals (already zero-copy via the
-        # base typed-batch path) still works — documents the non-position reuse.
+        # Explicit interop form logs SVectors as Vector3D through the same
+        # zero-copy base typed-batch path used for positions.
         Rerun.log(rec, "vecs", Rerun.Components.Vector3D, pts3)
 
         flush(rec)

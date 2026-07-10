@@ -18,10 +18,10 @@
 #      "row-major, interleaved-pixel image format"). Reaching that layout from a
 #      Julia matrix requires (a) splitting pixels into channels and (b)
 #      reordering column-major (h,w) into row-major (h then w). Both copy. We
-#      build the HWC byte buffer explicitly and DOCUMENT that it copies; we never
-#      reinterpret a Julia matrix straight into an image blob (that would be both
-#      transposed and, for multi-channel colorants whose physical field order is
-#      not RGBA, channel-scrambled).
+#      build the HWC byte buffer explicitly; reinterpreting a Julia matrix
+#      straight into an image blob would be both transposed and, for
+#      multi-channel colorants whose physical field order is not RGBA,
+#      channel-scrambled.
 #
 #   3. CHANNEL ORDER IS LOOKED UP, NOT ASSUMED. `ImageCore.channelview` always
 #      yields components in canonical R,G,B(,A) semantic order regardless of the

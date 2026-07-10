@@ -17,7 +17,7 @@
 #      `sizeof` matches. We guard every reinterpret with `@assert`s and route
 #      the result through the existing typed-batch `Rerun.log` path (which is
 #      itself zero-copy). For `Float64` or any other eltype we CONVERT to
-#      `Float32` (this COPIES) and say so.
+#      `Float32` (this COPIES).
 #
 #   3. BARE-VECTOR SUGAR RESOLVES TO POSITIONS. A bare `StaticVector` of 2/3
 #      `Float32` is the ambiguous case (could be a position, a vector/normal, a
@@ -36,7 +36,7 @@ using StaticArrays
 import Rerun.Components: Position2D, Position3D, TransformMat3x3
 
 # ---------------------------------------------------------------------------
-# Layout invariants (checked at precompile time, not the hot path).
+# Layout invariants (checked at precompile time, off the hot path).
 #
 # These document and enforce the exact wire layouts the zero-copy reinterprets
 # below depend on. If a future Rerun schema regen changes a layout, precompiling
@@ -97,7 +97,7 @@ end
     _reinterpret_batch(C, v)
 
 # Anything else (Float64, mixed eltype, non-contiguous AbstractVector): CONVERT.
-# This COPIES into a fresh Vector{C}. Documented; not zero-copy.
+# This COPIES into a fresh Vector{C}; not zero-copy.
 @inline _as_position_batch(::Type{C}, v::AbstractVector{<:StaticVector{N}}) where {C,N} =
     C[C(x) for x in v]
 

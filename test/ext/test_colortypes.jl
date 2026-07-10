@@ -8,13 +8,11 @@ using ColorTypes.FixedPointNumbers: N0f8
 using Test
 
 @testset "RerunColorTypesExt" begin
-    # The extension must actually be loaded (ColorTypes + Rerun both present).
     @test Base.get_extension(Rerun, :RerunColorTypesExt) !== nothing
 
     @testset "byte order is pinned (THE gotcha)" begin
-        # Rerun Color packs 0xRRGGBBAA: red in the MOST-significant byte, alpha
-        # in the least. This is the documented gotcha — pin it with a concrete,
-        # human-readable hex literal so a channel-order regression fails loudly.
+        # Rerun Color packs 0xRRGGBBAA: red in the most-significant byte, alpha
+        # in the least.
         @test Color(RGBA{N0f8}(1, 0, 0, 1)).rgba === 0xff0000ff   # pure red, opaque
         @test Color(RGBA{N0f8}(0, 1, 0, 1)).rgba === 0x00ff00ff   # pure green
         @test Color(RGBA{N0f8}(0, 0, 1, 1)).rgba === 0x0000ffff   # pure blue
@@ -22,8 +20,9 @@ using Test
     end
 
     @testset "channel positions are semantic, not field order" begin
-        # ARGB stores alpha first in memory, BGRA stores blue first — but
-        # red()/green()/blue()/alpha() are semantic, so all pack to 0xRRGGBBAA.
+        # red()/green()/blue()/alpha() return channels by semantics regardless
+        # of storage order (ARGB is alpha-first, BGRA blue-first), so all pack
+        # to 0xRRGGBBAA.
         @test Color(ARGB{N0f8}(1, 0, 0, 1)).rgba === 0xff0000ff   # red, despite A-first storage
         @test Color(BGRA{N0f8}(0, 0, 1, 1)).rgba === 0x0000ffff   # blue, despite B-first storage
         # Half alpha (N0f8 0.5 -> raw byte 0x80) lands in the LSB.
@@ -53,9 +52,8 @@ using Test
         ext = Base.get_extension(Rerun, :RerunColorTypesExt)
         @test ext !== nothing
 
-        # The Color(::Colorant) scalar path produces a fresh materialized vector;
-        # there is NO zero-copy reinterpret for colorants (channel reorder +
-        # scaling), so this is by-design a copy.
+        # Colorants always copy into a fresh Vector{Color}: the channel reorder
+        # and scaling rule out a zero-copy reinterpret.
         cs = [RGBA{N0f8}(1, 0, 0, 1), RGBA{N0f8}(0, 1, 0, 1), RGBA{N0f8}(0, 0, 1, 1)]
         converted = Color[Color(c) for c in cs]
         @test converted == Color[Color(0xff0000ff), Color(0x00ff00ff), Color(0x0000ffff)]
@@ -68,7 +66,6 @@ using Test
 
         # Bare Vector{<:Colorant} -> logs as Color batch.
         Rerun.log(rec, "colors", cs)
-        # Mixed colorant types in separate calls.
         Rerun.log(rec, "rgb", [RGB{Float32}(0.5f0, 0.25f0, 0f0)])
         Rerun.log(rec, "gray", [Gray{N0f8}(0.5), Gray{N0f8}(1.0)])
 

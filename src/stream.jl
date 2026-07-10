@@ -29,9 +29,8 @@ end
 
 Base.show(io::IO, r::RecordingStream) = print(io, "RecordingStream(handle=", r.handle, ")")
 
-# Free the handle and mark it freed (idempotent). 0 = null/invalid; the
-# 0xffff_ffff/0xffff_fffe values are the current-recording/blueprint sentinels,
-# which `rr_recording_stream_free` is documented to no-op on anyway.
+# Idempotent free. Skips the null handle (0) and the current-recording/blueprint
+# sentinels (0xffff_ffff/0xffff_fffe), which `rr_recording_stream_free` no-ops on.
 function _free!(r::RecordingStream)
     h = r.handle
     if h != 0 && h != LibRerunC.RR_REC_STREAM_CURRENT_RECORDING && h != LibRerunC.RR_REC_STREAM_CURRENT_BLUEPRINT
@@ -281,8 +280,8 @@ end
         end
     catch
         # The log failed -> rerun never took ownership, so its release callback will
-        # never fire. Release the built arrays ourselves (frees C bookkeeping and
-        # unpins zero-copy roots) instead of leaking them and the GC roots forever.
+        # never fire. Release the built arrays ourselves to free C bookkeeping and
+        # unpin the zero-copy GC roots.
         for b in batches; _release_unpublished(b.array); end
         rethrow()
     end

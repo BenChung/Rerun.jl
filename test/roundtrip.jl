@@ -31,7 +31,7 @@ end
         "rerun.components.Position3D" => POS,
         "rerun.components.Color"      => COL,
         "rerun.components.Radius"     => RAD)
-    # archetype-driven (cts resolved from the catalog)
+    # archetype-driven (component types resolved from the catalog)
     Rerun.log_archetype(rec, "world/b", "rerun.archetypes.Points3D";
         positions=POS, colors=COL, radii=RAD)
     flush(rec)

@@ -8,7 +8,6 @@ using Rotations
 using Test
 
 @testset "RerunRotationsExt" begin
-    # The extension must actually be loaded (Rotations + Rerun both present).
     @test Base.get_extension(Rerun, :RerunRotationsExt) !== nothing
     ext = Base.get_extension(Rerun, :RerunRotationsExt)
 

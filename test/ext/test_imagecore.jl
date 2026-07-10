@@ -18,7 +18,6 @@ using ColorTypes.FixedPointNumbers: N0f8
 using Test
 
 @testset "RerunImageCoreExt" begin
-    # The extension must actually be loaded (ImageCore + ColorTypes + Rerun present).
     ext = Base.get_extension(Rerun, :RerunImageCoreExt)
     @test ext !== nothing
 

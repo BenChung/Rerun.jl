@@ -5,8 +5,7 @@
 # with the export path (`_parse_schema`, arrow_schema.jl); per-batch decode
 # dispatches on it.
 # Primitive columns alias the Rust buffers zero-copy; variable-length columns
-# decode by copy. Results are presented as a Tables.jl column source. See
-# native/DESIGN.md.
+# decode by copy. Results are presented as a Tables.jl column source.
 
 using librerun_query_jll
 import Tables

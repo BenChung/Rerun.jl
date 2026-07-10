@@ -2,11 +2,10 @@
 # env that has CoordinateTransformations (and Rotations) as test dependencies,
 # which triggers the extension to load.
 #
-# These tests pin the LOAD-BEARING gotcha for this mapping: the quaternion
-# component order. Rotations.jl stores quaternions scalar-FIRST (w, x, y, z);
-# Rerun's RotationQuat stores them scalar-LAST (x, y, z, w). The extension must
-# reorder. We assert the exact emitted tuple. We also pin the column-major
-# flat_columns matrix layout for the mat3x3 fallback.
+# Load-bearing gotcha: quaternion component order. Rotations.jl stores
+# quaternions scalar-first (w, x, y, z); Rerun's RotationQuat stores them
+# scalar-last (x, y, z, w), so the extension reorders. The mat3x3 fallback uses
+# column-major flat_columns layout.
 
 using Rerun
 using Rerun.Components: Translation3D, RotationQuat, TransformMat3x3
@@ -23,23 +22,22 @@ using Test
         t = Translation(1.0, 2.0, 3.0)
         tf = Transform3D(t)
         @test tf isa Transform3D
-        # Only the translation field is populated (everything else nothing).
         @test tf.fields.translation isa AbstractVector{Translation3D}
         @test length(tf.fields.translation) == 1
         @test tf.fields.translation[1].vector === (1f0, 2f0, 3f0)
         @test tf.fields.rotation_axis_angle === nothing
         @test tf.fields.quaternion === nothing
         @test tf.fields.mat3x3 === nothing
-        # Float64 input was converted to Float32 (this mapping COPIES, never reinterprets).
+        # Float64 narrows to Float32, so this mapping always copies.
         @test eltype(tf.fields.translation[1].vector) === Float32
     end
 
     @testset "LinearMap{<:Rotation} -> quaternion (PINS w-order gotcha)" begin
-        # A 90 degree rotation about +Z. Its unit quaternion (scalar-first, as
-        # Rotations.params returns) is (w, x, y, z) = (cos45, 0, 0, sin45).
-        # RerunRotationsExt maps a non-RotMatrix/non-AngleAxis rotation to a
-        # quaternion; this extension delegates to it. The scalar-last reorder is
-        # the load-bearing gotcha and is pinned below.
+        # A 90 degree rotation about +Z. Its unit quaternion, scalar-first as
+        # Rotations.params returns, is (w, x, y, z) = (cos45, 0, 0, sin45).
+        # RerunRotationsExt maps rotations other than RotMatrix and AngleAxis to
+        # a quaternion; this extension delegates to it. The scalar-last reorder
+        # is the load-bearing gotcha pinned below.
         rot = RotZ(pi / 2)
         lm = LinearMap(rot)
         tf = Transform3D(lm)

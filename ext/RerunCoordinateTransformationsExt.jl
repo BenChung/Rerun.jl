@@ -13,8 +13,8 @@
 #      buffer, and CoordinateTransformations stores its data as `Float64`
 #      SVectors / matrices while Rerun's components are `Float32`. Every mapping
 #      here CONVERTS (copies) into freshly-built `Float32` components. There is no
-#      `reinterpret` and nothing to share — this is deliberate and documented; do
-#      not "optimize" it into a reinterpret.
+#      `reinterpret` and nothing to share; do not "optimize" this into a
+#      reinterpret.
 #
 #   3. ROTATION DELEGATION (the load-bearing detail). The rotation -> Rerun field
 #      conversion is DELEGATED to the RerunRotationsExt extension, via the

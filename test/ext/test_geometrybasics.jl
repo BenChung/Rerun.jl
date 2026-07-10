@@ -64,7 +64,7 @@ _field(a, name) = getfield(a.fields, name)
         pts = [Point2f(0, 0), Point2f(1, 0), Point2f(0, 1)]
         poly = Polygon(pts)
         ring = EXT._points(poly)
-        # Replicate the closing the log method does and assert the gotcha.
+        # Replicate the ring-closing the log method performs, then assert the gotcha.
         if !isempty(ring) && first(ring) != last(ring)
             ring = vcat(ring, [first(ring)])
         end

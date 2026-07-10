@@ -18,8 +18,8 @@ if [[ "${target}" == *musl* ]]; then
 fi
 
 cargo build --release --target ${rust_target}
-# `*` absorbs the platform-dependent `lib` prefix (librerun_query.so / rerun_query.dll);
-# ${libdir} is `bin` on Windows, `lib` elsewhere, so the destination is right everywhere.
+# `*` absorbs the platform-dependent `lib` prefix (librerun_query.so / rerun_query.dll).
+# ${libdir} is `bin` on Windows and `lib` elsewhere.
 install -Dvm 755 -t "${libdir}" target/${rust_target}/release/*rerun_query*.${dlext}
 install_license $WORKSPACE/srcdir/Rerun*/LICENSE
 """

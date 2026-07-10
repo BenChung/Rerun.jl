@@ -215,9 +215,9 @@ function _build_component_array(t::ArrowType, data::AbstractVector)
     if _is_flat(t)
         # Flat layout: require an exactly-matching isbits element (ignoring an
         # optional `Missing`) so we can hand rerun a pointer into `data`
-        # (zero-copy). A wrong-width element is a caller error, not an invitation
-        # to silently convert. Validation precedes _register_root!, so a rejected
-        # call leaves no dangling entry; rerun then owns/releases the array.
+        # (zero-copy). A wrong-width element is a caller error. Validation
+        # precedes _register_root!, so a rejected call leaves no dangling entry;
+        # rerun then owns/releases the array.
         T = Base.nonmissingtype(eltype(data))
         isbitstype(T) || error("component data eltype $(eltype(data)) must be isbits")
         sizeof(T) == _wire_elsize(t) || error("element-size mismatch: $T is $(sizeof(T)) bytes, " *
@@ -395,7 +395,7 @@ end
 function _assembled(t::ArrowFixedList, data::AbstractVector)
     n = length(data); k = t.n
     if Missing <: eltype(data) && any(x -> x === missing, data)
-        flat = Vector{Any}(undef, n * k); idx = 0                  # rare: zero-fill null slots
+        flat = Vector{Any}(undef, n * k); idx = 0                  # rare: pad each null parent with k `missing` slots
         @inbounds for x in data
             if x === missing
                 for _ in 1:k; idx += 1; flat[idx] = missing; end

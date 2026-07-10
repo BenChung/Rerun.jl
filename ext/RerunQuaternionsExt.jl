@@ -40,7 +40,7 @@ using Quaternions
 import Rerun.Components: RotationQuat
 
 # ---------------------------------------------------------------------------
-# Layout invariant (checked at precompile time, not the hot path). Documents the
+# Layout invariant (checked at precompile time, off the hot path). Documents the
 # wire layout the reorder below targets. If a future schema regen changes it,
 # precompiling this extension fails loudly here.
 # ---------------------------------------------------------------------------
@@ -60,8 +60,8 @@ RotationQuat(q::Quaternion) =
     RotationQuat((Float32(q.v1), Float32(q.v2), Float32(q.v3), Float32(q.s)))
 
 # ===========================================================================
-# Batch convert helper. ALWAYS copies (see the module note (2a): reorder makes a
-# reinterpret illegal for every eltype). Returns a fresh `Vector{RotationQuat}`
+# Batch convert helper. ALWAYS copies: the scalar reorder makes a reinterpret
+# illegal for every eltype. Returns a fresh `Vector{RotationQuat}`
 # ready for the typed `Rerun.log(rec, path, ::Type{RotationQuat}, batch)` path.
 # ===========================================================================
 @inline _as_rotation_batch(qs::AbstractVector{<:Quaternion}) =

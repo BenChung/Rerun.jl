@@ -68,8 +68,8 @@ makedocs(;
     modules  = [Rerun],
     repo     = Documenter.Remotes.GitHub("BenChung", "Rerun.jl"),
     format   = Documenter.HTML(; prettyurls = get(ENV, "CI", "false") == "true"),
-    # Internal helpers (marshal/cdata/util) carry docstrings but aren't part of the
-    # public API page; let those warn rather than fail the build.
+    # Internal helpers (marshal/cdata/util) carry docstrings outside the public API
+    # page; downgrade their missing-docs and cross-reference errors to warnings.
     warnonly = [:missing_docs, :cross_references],
     pages = [
         "Home" => "index.md",

@@ -15,7 +15,7 @@
 #      zero-copy: Rotations.jl stores quaternions SCALAR-FIRST ([w,x,y,z]) while
 #      Rerun's `RotationQuat` is SCALAR-LAST ([x,y,z,w]), so every quaternion
 #      must be REORDERED (a copy). AngleAxis and RotMatrix likewise materialize
-#      fresh component values. All conversions COPY and are documented as such.
+#      fresh component values. All conversions COPY.
 #      A rotation is also a tiny fixed-size value (4/9 Float32), so there is no
 #      bulk buffer to share even in principle.
 #
@@ -102,9 +102,8 @@ end
 # ===========================================================================
 TransformMat3x3(r::RotMatrix{3}) = TransformMat3x3(map(Float32, Tuple(r.mat)))
 
-# General Rotation{3}: anything that ISN'T already one of the above (Float32 or
-# not) — RotationVec, RodriguesParam, MRP, RotXYZ, etc. Convert to a quaternion
-# first, then reuse the QuatRotation path. COPIES.
+# Any other Rotation{3} (RotationVec, RodriguesParam, MRP, RotXYZ, ...): convert
+# to a quaternion first, then reuse the QuatRotation path. COPIES.
 RotationQuat(r::Rotation{3}) = RotationQuat(QuatRotation(r))
 
 # ===========================================================================

@@ -15,8 +15,7 @@
 #      whose contiguous bit layout already equals `0xRRGGBBAA`, so we ALWAYS
 #      build the `UInt32` explicitly via the `red()/green()/blue()/alpha()`
 #      accessors. The `Vector{<:Colorant}` batch path therefore COPIES into a
-#      fresh `Vector{Color}`. This is documented and intentional — silently
-#      reinterpreting a colorant would scramble channels.
+#      fresh `Vector{Color}`; reinterpreting a colorant would scramble channels.
 #
 #   3. CHANNEL ORDER IS LOOKED UP, NOT ASSUMED. We use `ColorTypes.red/green/
 #      blue/alpha` accessors so ARGB/BGRA/RGBA all pack correctly regardless of
@@ -46,7 +45,7 @@ import Rerun.Components: Color
 using ColorTypes.FixedPointNumbers: N0f8
 
 # ---------------------------------------------------------------------------
-# Layout invariant (checked at precompile time, not the hot path).
+# Layout invariant (checked at precompile time, off the hot path).
 # ---------------------------------------------------------------------------
 @assert isbitstype(Color)            "Color must be isbits"
 @assert sizeof(Color) == sizeof(UInt32) "Color is a single packed UInt32 (0xRRGGBBAA)"
@@ -97,8 +96,8 @@ function Color(c::TransparentGray)
 end
 
 # Opaque gray (`Gray`, `Gray24`): single channel -> r=g=b=value, alpha 0xff.
-# `red/green/blue` are NOT defined on grays, only `gray`, so this needs its own
-# method rather than reusing the RGB path.
+# `gray` is the only channel accessor on grays, so this method builds r=g=b
+# from it directly.
 function Color(c::AbstractGray)
     v = _chan_byte(gray(c))
     return Color(_pack(v, v, v, 0xff))

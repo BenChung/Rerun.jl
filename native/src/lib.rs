@@ -1,9 +1,9 @@
 //! `rerun_query` — a C-ABI shim over Rerun's dataframe query engine
 //! (`rerun::dataframe`), returning results as Arrow C Data Interface arrays for
-//! zero-copy transfer into the `Rerun.jl` binding. See DESIGN.md.
+//! zero-copy transfer into the `Rerun.jl` binding.
 //!
-//! Phase 1 (this file): in-process `QueryEngine` over an in-memory `ChunkStore`.
-//! Streaming forward cursor — `load → select → reader`, one batch per `next`.
+//! An in-process `QueryEngine` over an in-memory `ChunkStore`, exposed as a
+//! streaming forward cursor: `load → select → reader`, one batch per `next`.
 
 use std::ffi::{CStr, CString, c_char};
 use std::os::raw::c_int;
@@ -330,8 +330,8 @@ pub extern "C" fn rrq_reader_next(
     let res = catch_unwind(AssertUnwindSafe(|| -> anyhow::Result<c_int> {
         let reader = unsafe { reader.as_mut() }.ok_or_else(|| anyhow::anyhow!("null reader"))?;
         anyhow::ensure!(!out.is_null(), "null out pointer");
-        // Coalesce many engine rows into one batch (the engine otherwise emits
-        // one row per index value).
+        // Coalesce many engine rows into one batch; the engine emits one row
+        // per index value.
         let batch = reader.handle.next_n_rows(MAX_BATCH_ROWS, MAX_BATCH_BYTES);
         if batch.num_rows == 0 {
             return Ok(1); // end of stream
