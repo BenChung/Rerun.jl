@@ -1,16 +1,17 @@
 # Dataframe query: read recordings out as zero-copy Tables.jl sources.
 #
-# Calls the librerun_query C ABI (load -> view -> select -> streaming reader),
-# decodes each Arrow C Data Interface batch into Julia columns (primitive columns
-# alias the Rust buffers zero-copy; variable-length columns decode), and presents
-# the result as a Tables.jl column source. See native/DESIGN.md.
+# Calls the librerun_query C ABI (load -> view -> select -> streaming reader).
+# The result schema is parsed once per query into the ArrowType algebra shared
+# with the export path (`_parse_schema`, arrow_schema.jl); per-batch decode
+# dispatches on it.
+# Primitive columns alias the Rust buffers zero-copy; variable-length columns
+# decode by copy. Results are presented as a Tables.jl column source. See
+# native/DESIGN.md.
 
 using librerun_query_jll
 import Tables
 
 const _LIB = librerun_query_jll.librerun_query
-const _AS = LibRerunC.ArrowSchema
-const _AA = LibRerunC.ArrowArray
 
 # ---------------------------------------------------------------------------
 # C ABI: error type + ccall helpers
@@ -60,11 +61,12 @@ function Base.show(io::IO, ::MIME"text/plain", r::Recording)
 end
 Base.show(io::IO, r::Recording) = print(io, "Rerun.Recording(", repr(r.path), ")")
 
-mutable struct RecordingView
+mutable struct RecordingView{TL<:Timeline}
     rec::Recording        # keeps the engine alive
+    timeline::TL          # resolved index timeline; drives filter_range conversions
     ptr::Ptr{Cvoid}
-    function RecordingView(rec::Recording, ptr::Ptr{Cvoid})
-        v = new(rec, ptr)
+    function RecordingView(rec::Recording, tl::TL, ptr::Ptr{Cvoid}) where {TL<:Timeline}
+        v = new{TL}(rec, tl, ptr)
         finalizer(v) do x
             x.ptr == C_NULL || ccall((:rrq_query_free, _LIB), Cvoid, (Ptr{Cvoid},), x.ptr)
             x.ptr = C_NULL
@@ -85,16 +87,67 @@ function load_recording(path::AbstractString)
     Recording(p, path)
 end
 
+# Timeline kind codes of the librerun_query ABI (RRQ_TIMELINE_*), by canonical type.
+const _RRQ_TIMELINE_TYPES = (Int64, Nanosecond, TimePoint)   # codes 0, 1, 2
+
+"""
+    timelines(rec::Recording) -> Vector{Timeline}
+
+The recording's index timelines, each a concrete `Timeline{T}` carrying its
+time representation (see [`Timeline`](@ref)).
+"""
+function timelines(rec::Recording)
+    n = Int(ccall((:rrq_timeline_count, _LIB), Csize_t, (Ptr{Cvoid},), rec.ptr))
+    out = Vector{Timeline}(undef, n)
+    for i in 1:n
+        namep = ccall((:rrq_timeline_name, _LIB), Cstring, (Ptr{Cvoid}, Csize_t), rec.ptr, i - 1)
+        k = ccall((:rrq_timeline_kind, _LIB), UInt32, (Ptr{Cvoid}, Csize_t), rec.ptr, i - 1)
+        0 <= k <= 2 || throw(RerunError("unknown timeline kind code $k from librerun_query"))
+        out[i] = Timeline{_RRQ_TIMELINE_TYPES[k + 1]}(unsafe_string(namep))
+    end
+    return out
+end
+
+"""
+    timeline(rec::Recording, name) -> Timeline
+
+Look up one of the recording's timelines by name as a concrete `Timeline{T}`.
+This is the type-dynamic boundary of the read path: the parameter comes from
+the recording, and downstream calls (`view`, `filter_range`) specialize on the
+result.
+"""
+function timeline(rec::Recording, name::AbstractString)
+    tls = timelines(rec)
+    for tl in tls
+        tl.name == name && return tl
+    end
+    throw(RerunError("recording has no timeline $(repr(String(name))); timelines: " *
+                     join((t.name for t in tls), ", ")))
+end
+
+# The recording is the authority on timeline kinds: strings resolve against it,
+# and a user-supplied Timeline is validated against it.
+_resolve_index(rec::Recording, name::AbstractString) = timeline(rec, name)
+function _resolve_index(rec::Recording, tl::Timeline)
+    actual = timeline(rec, tl.name)
+    typeof(actual) === typeof(tl) || throw(RerunError(
+        "recording timeline $(repr(tl.name)) is $(kind(actual))-valued; got a $(kind(tl)) Timeline"))
+    return tl
+end
+
 """
     view(rec; index, contents=nothing) -> RecordingView
 
-Build a query over `rec`. `index` is the timeline driving rows; `contents` is
-`nothing` (all entities) or a collection of entity-path strings.
+Build a query over `rec`. `index` is the timeline driving rows — a name string
+or a [`Timeline`](@ref), resolved and kind-checked against the recording's
+timelines. `contents` is `nothing` (all entities) or a collection of
+entity-path strings.
 """
-function view(rec::Recording; index::AbstractString, contents=nothing)
+function view(rec::Recording; index::Union{AbstractString,Timeline}, contents=nothing)
+    tl = _resolve_index(rec, index)
     q = ccall((:rrq_query_new, _LIB), Ptr{Cvoid}, ())
-    v = RecordingView(rec, q)
-    ccall((:rrq_query_set_index, _LIB), Cvoid, (Ptr{Cvoid}, Cstring), q, index)
+    v = RecordingView(rec, tl, q)
+    ccall((:rrq_query_set_index, _LIB), Cvoid, (Ptr{Cvoid}, Cstring), q, tl.name)
     contents === nothing || set_contents!(v, contents)
     v
 end
@@ -109,9 +162,13 @@ function set_contents!(v::RecordingView, paths)
     v
 end
 
-"Restrict rows to the inclusive index range `[lo, hi]`."
-filter_range(v::RecordingView, lo::Integer, hi::Integer) =
-    (ccall((:rrq_query_filter_range, _LIB), Cvoid, (Ptr{Cvoid}, Int64, Int64), v.ptr, lo, hi); v)
+"""Restrict rows to the inclusive index range `[lo, hi]`. Values convert per
+the view's index timeline: raw `Integer` (nanoseconds on duration/timestamp
+timelines), [`TimePoint`](@ref)/`DateTime` on timestamp timelines,
+`Dates.FixedPeriod` on duration timelines."""
+filter_range(v::RecordingView, lo, hi) =
+    (ccall((:rrq_query_filter_range, _LIB), Cvoid, (Ptr{Cvoid}, Int64, Int64),
+           v.ptr, _time_value(v.timeline, lo), _time_value(v.timeline, hi)); v)
 
 "Forward-fill each column with its latest value at every index row."
 fill_latest_at(v::RecordingView) =
@@ -147,55 +204,24 @@ Base.IndexStyle(::Type{<:ArrowColumn}) = Base.IndexLinear()
 Base.@propagate_inbounds Base.getindex(c::ArrowColumn, i::Int) = c.data[i]
 
 # ---------------------------------------------------------------------------
-# Arrow C Data Interface decode
+# batch decode: `_decode(type, array, batch)` dispatches on the ArrowType
+# parsed from the reader's schema (arrow_schema.jl)
 # ---------------------------------------------------------------------------
-const _PRIM = Dict{String,DataType}(
-    "c" => Int8, "C" => UInt8, "s" => Int16, "S" => UInt16,
-    "i" => Int32, "I" => UInt32, "l" => Int64, "L" => UInt64,
-    "e" => Float16, "f" => Float32, "g" => Float64,
-)
-
-_sname(p::Ptr{_AS}) = (s = unsafe_load(p); s.name == C_NULL ? "" : unsafe_string(s.name))
 
 _bit(p::Ptr{UInt8}, k::Int) = p == C_NULL || ((unsafe_load(p, (k >> 3) + 1) >> (k & 7)) & 0x01) == 0x01
 
 # Validity bitmap pointer, or NULL if the array has no nulls (all-valid).
 _validity(a::_AA) = a.null_count == 0 ? Ptr{UInt8}(C_NULL) : Ptr{UInt8}(unsafe_load(a.buffers, 1))
 
-# Arrow temporal types are stored as integers; expose the raw storage value
-# (e.g. timestamp/duration nanoseconds). Returns the storage element type, or
-# `nothing` if `fmt` is not a temporal code.
-function _temporal_storage(fmt::AbstractString)
-    startswith(fmt, "ts") && return Int64           # timestamp
-    startswith(fmt, "tD") && return Int64           # duration
-    fmt == "tdD" && return Int32                    # date32 (days)
-    fmt == "tdm" && return Int64                    # date64 (ms)
-    (fmt == "tts" || fmt == "ttm") && return Int32  # time32
-    (fmt == "ttu" || fmt == "ttn") && return Int64  # time64
-    return nothing
+function _decode(t::ArrowAtom, a::_AA, batch::_Batch)
+    t.tag === :bool && return _decode_bool(a)
+    return _decode_primitive(_ATOM_JULIA[t.tag], a, batch)   # barrier: loops specialize on T
 end
 
-function _decode(cs::Ptr{_AS}, ca::Ptr{_AA}, batch::_Batch)
-    s = unsafe_load(cs)
-    a = unsafe_load(ca)
-    s.dictionary == C_NULL ||
-        error("rerun query: dictionary-encoded column $(repr(_sname(cs))) not supported")
-    fmt = unsafe_string(s.format)
-    if haskey(_PRIM, fmt)
-        return _decode_primitive(_PRIM[fmt], a, batch)
-    elseif fmt == "b"
-        return _decode_bool(a)
-    elseif fmt == "u"
-        return _decode_utf8(a)
-    elseif fmt == "+l"
-        return _decode_list(s, a, batch)
-    elseif startswith(fmt, "+w:")
-        return _decode_fixedlist(s, a, batch, parse(Int, fmt[4:end]))
-    end
-    st = _temporal_storage(fmt)
-    st === nothing || return _decode_primitive(st, a, batch)
-    error("rerun query: unsupported Arrow column type $(repr(fmt)) (column $(repr(_sname(cs))))")
-end
+# ns temporal columns decode losslessly as the canonical time types — same
+# Int64 buffer, zero-copy, self-describing eltype.
+_temporal_eltype(t::ArrowTemporal) = t.kind === :timestamp ? TimePoint : Nanosecond
+_decode(t::ArrowTemporal, a::_AA, batch::_Batch) = _decode_primitive(_temporal_eltype(t), a, batch)
 
 function _decode_primitive(::Type{T}, a::_AA, batch::_Batch) where {T}
     n = Int(a.length)
@@ -223,7 +249,7 @@ function _decode_bool(a::_AA)
     out
 end
 
-function _decode_utf8(a::_AA)
+function _decode(::ArrowUtf8, a::_AA, ::_Batch)
     n = Int(a.length)
     off = Int(a.offset)
     offs = unsafe_wrap(Array, Ptr{Int32}(unsafe_load(a.buffers, 2)), n + off + 1; own=false)
@@ -242,11 +268,11 @@ function _decode_utf8(a::_AA)
     out
 end
 
-function _decode_list(s::_AS, a::_AA, batch::_Batch)
+function _decode(t::ArrowList, a::_AA, batch::_Batch)
     n = Int(a.length)
     off = Int(a.offset)
     offs = unsafe_wrap(Array, Ptr{Int32}(unsafe_load(a.buffers, 2)), n + off + 1; own=false)
-    inner = _decode(unsafe_load(s.children, 1), unsafe_load(a.children, 1), batch)
+    inner = _decode(t.item.type, unsafe_load(unsafe_load(a.children, 1)), batch)
     valid = _validity(a)
     ET = Vector{eltype(inner)}
     out = valid == C_NULL ? Vector{ET}(undef, n) : Vector{Union{Missing,ET}}(undef, n)
@@ -260,10 +286,11 @@ function _decode_list(s::_AS, a::_AA, batch::_Batch)
     out
 end
 
-function _decode_fixedlist(s::_AS, a::_AA, batch::_Batch, k::Int)
+function _decode(t::ArrowFixedList, a::_AA, batch::_Batch)
     n = Int(a.length)
     off = Int(a.offset)
-    inner = _decode(unsafe_load(s.children, 1), unsafe_load(a.children, 1), batch)
+    k = t.n
+    inner = _decode(t.item.type, unsafe_load(unsafe_load(a.children, 1)), batch)
     valid = _validity(a)
     ET = Vector{eltype(inner)}
     out = valid == C_NULL ? Vector{ET}(undef, n) : Vector{Union{Missing,ET}}(undef, n)
@@ -278,34 +305,11 @@ function _decode_fixedlist(s::_AS, a::_AA, batch::_Batch, k::Int)
     out
 end
 
-# Empty typed column matching a schema child's format (for zero-row results).
-function _empty_col(cs::Ptr{_AS})
-    s = unsafe_load(cs)
-    s.dictionary == C_NULL ||
-        error("rerun query: dictionary-encoded column $(repr(_sname(cs))) not supported")
-    fmt = unsafe_string(s.format)
-    haskey(_PRIM, fmt) && return (_PRIM[fmt])[]
-    fmt == "b" && return Bool[]
-    fmt == "u" && return String[]
-    if fmt == "+l" || startswith(fmt, "+w:")
-        return Vector{eltype(_empty_col(unsafe_load(s.children, 1)))}[]
-    end
-    st = _temporal_storage(fmt)
-    st === nothing || return st[]
-    error("rerun query: unsupported Arrow column type $(repr(fmt)) (column $(repr(_sname(cs))))")
-end
-
-function _empty_batch(schema_ptr::Ptr{_AS})
-    s = unsafe_load(schema_ptr)
-    names = Vector{Symbol}(undef, s.n_children)
-    cols = Vector{AbstractVector}(undef, s.n_children)
-    for i in 1:s.n_children
-        cs = unsafe_load(s.children, i)
-        names[i] = Symbol(_sname(cs))
-        cols[i] = _empty_col(cs)
-    end
-    ColumnBatch(names, cols)
-end
+# Empty typed column for a zero-row result.
+_empty_col(t::ArrowAtom) = t.tag === :bool ? Bool[] : (_ATOM_JULIA[t.tag])[]
+_empty_col(t::ArrowTemporal) = _temporal_eltype(t)[]
+_empty_col(::ArrowUtf8)  = String[]
+_empty_col(t::Union{ArrowList,ArrowFixedList}) = Vector{eltype(_empty_col(t.item.type))}[]
 
 # ---------------------------------------------------------------------------
 # Tables.jl source
@@ -359,16 +363,10 @@ function _materialize(qr::QueryResult)
     end
 end
 
-function _decode_batch(schema_ptr::Ptr{_AS}, batch::_Batch)
-    s = unsafe_load(schema_ptr)
+function _decode_batch(names::Vector{Symbol}, types::Vector{ArrowType}, batch::_Batch)
     a = batch.ref[]
-    names = Vector{Symbol}(undef, s.n_children)
-    cols = Vector{AbstractVector}(undef, s.n_children)
-    for i in 1:s.n_children
-        cs = unsafe_load(s.children, i)
-        names[i] = Symbol(_sname(cs))
-        cols[i] = _decode(cs, unsafe_load(a.children, i), batch)
-    end
+    cols = AbstractVector[_decode(types[i], unsafe_load(unsafe_load(a.children, i)), batch)
+                          for i in eachindex(types)]
     ColumnBatch(names, cols)
 end
 
@@ -391,6 +389,7 @@ function select(v::RecordingView)
     reader == C_NULL && _check(err, "select")
     try
         schema_ptr = ccall((:rrq_reader_schema, _LIB), Ptr{_AS}, (Ptr{Cvoid},), reader)
+        names, types = _parse_schema(schema_ptr)
         parts = ColumnBatch[]
         while true
             ref = Ref(_empty_aa())
@@ -399,10 +398,10 @@ function select(v::RecordingView)
             rc < 0 && _check(err, "reader_next")
             rc == 1 && break
             batch = _Batch(ref)   # attach the release finalizer before any other work
-            push!(parts, _decode_batch(schema_ptr, batch))
+            push!(parts, _decode_batch(names, types, batch))
         end
         # Preserve the known schema even when no rows matched.
-        isempty(parts) && push!(parts, _empty_batch(schema_ptr))
+        isempty(parts) && push!(parts, ColumnBatch(names, AbstractVector[_empty_col(t) for t in types]))
         QueryResult(parts)
     finally
         ccall((:rrq_reader_free, _LIB), Cvoid, (Ptr{Cvoid},), reader)

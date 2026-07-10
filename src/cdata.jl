@@ -1,22 +1,17 @@
-# Arrow C Data Interface export.
+# Arrow C Data Interface array export (schemas are built/parsed in
+# arrow_schema.jl).
 #
-# Schema comes from the generated catalog (authoritative); array buffers point
-# directly into caller-owned Julia memory (ZERO COPY) for the primitive and
-# fixed-size-list-of-primitive component layouts. Only small C bookkeeping
-# (the buffers/children pointer arrays and child structs) is malloc'd.
+# Array buffers point directly into caller-owned Julia memory (ZERO COPY) for
+# the primitive and fixed-size-list-of-primitive component layouts. Only small
+# C bookkeeping (the buffers/children pointer arrays and child structs) is
+# malloc'd.
 #
-# Ownership / lifetime:
-#   * `rr_register_component_type` releases the schema synchronously on the
-#     calling thread -> the schema release callback just frees its malloc'd C
-#     memory (it references no Julia data).
-#   * `rr_recording_stream_log` releases the array ASYNCHRONOUSLY on a rerun
-#     background thread. The array release callback must therefore be pure C
-#     (no Julia runtime): it frees the malloc'd bookkeeping and flips a flag in
-#     `private_data`. A Julia-side drain (`_drain_exports`, called on every
-#     stream API entry) then drops the GC root keeping the data alive. A late
-#     un-root is harmless because rerun is already done with the buffers.
-
-const ARROW_FLAG_NULLABLE = Int64(2)
+# Ownership / lifetime: `rr_recording_stream_log` releases the array
+# ASYNCHRONOUSLY on a rerun background thread. The array release callback must
+# therefore be pure C (no Julia runtime): it frees the malloc'd bookkeeping and
+# flips a flag in `private_data`. A Julia-side drain (`_drain_exports`, called
+# on every stream API entry) then drops the GC root keeping the data alive. A
+# late un-root is harmless because rerun is already done with the buffers.
 
 const _ATOM_SIZE = Dict(
     :bool=>1, :i8=>1, :u8=>1, :i16=>2, :u16=>2, :f16=>2,
@@ -31,24 +26,7 @@ _wire_elsize(t::ArrowType)      = error("$(typeof(t)) has no flat wire layout (a
 # ---------------------------------------------------------------------------
 # release callbacks (set in __init__)
 # ---------------------------------------------------------------------------
-const _ARRAY_RELEASE  = Ref{Ptr{Cvoid}}(C_NULL)
-const _SCHEMA_RELEASE = Ref{Ptr{Cvoid}}(C_NULL)
-
-function _release_schema(p::Ptr{LibRerunC.ArrowSchema})::Cvoid
-    s = unsafe_load(p)
-    s.release == C_NULL && return
-    for i in 1:s.n_children
-        cp = unsafe_load(s.children, i)
-        c = unsafe_load(cp)
-        c.release != C_NULL && ccall(c.release, Cvoid, (Ptr{LibRerunC.ArrowSchema},), cp)
-        Libc.free(cp)
-    end
-    s.n_children > 0 && Libc.free(s.children)
-    Libc.free(s.format)
-    s.name != C_NULL && Libc.free(s.name)
-    unsafe_store!(p, _with_schema_released(s))
-    return
-end
+const _ARRAY_RELEASE = Ref{Ptr{Cvoid}}(C_NULL)
 
 function _release_array(p::Ptr{LibRerunC.ArrowArray})::Cvoid
     a = unsafe_load(p)
@@ -95,32 +73,10 @@ function _release_array_owned(p::Ptr{LibRerunC.ArrowArray})::Cvoid
 end
 
 # immutable-struct field updates
-_with_schema_released(s::LibRerunC.ArrowSchema) = LibRerunC.ArrowSchema(
-    s.format, s.name, s.metadata, s.flags, s.n_children, s.children, s.dictionary, C_NULL, s.private_data)
 _with_array_released(a::LibRerunC.ArrowArray) = LibRerunC.ArrowArray(
     a.length, a.null_count, a.offset, a.n_buffers, a.n_children, a.buffers, a.children, a.dictionary, C_NULL, a.private_data)
 _with_array_private(a::LibRerunC.ArrowArray, priv::Ptr{Cvoid}) = LibRerunC.ArrowArray(
     a.length, a.null_count, a.offset, a.n_buffers, a.n_children, a.buffers, a.children, a.dictionary, a.release, priv)
-
-# ---------------------------------------------------------------------------
-# schema builder (from catalog ArrowType) -> ArrowSchema value
-# ---------------------------------------------------------------------------
-function _build_schema(t::ArrowType, name::AbstractString, nullable::Bool)
-    children = arrow_children(t)
-    nc = length(children)
-    childptr = Ptr{Ptr{LibRerunC.ArrowSchema}}(C_NULL)
-    if nc > 0
-        childptr = Ptr{Ptr{LibRerunC.ArrowSchema}}(Libc.malloc(sizeof(Ptr) * nc))
-        for (i, f) in enumerate(children)
-            cp = Ptr{LibRerunC.ArrowSchema}(Libc.malloc(sizeof(LibRerunC.ArrowSchema)))
-            unsafe_store!(cp, _build_schema(f.type, f.name, f.nullable))
-            unsafe_store!(childptr, cp, i)
-        end
-    end
-    flags = nullable ? ARROW_FLAG_NULLABLE : Int64(0)
-    return LibRerunC.ArrowSchema(_cstr(arrow_format(t)), _cstr(name), Ptr{Cchar}(C_NULL),
-        flags, Int64(nc), childptr, Ptr{LibRerunC.ArrowSchema}(C_NULL), _SCHEMA_RELEASE[], C_NULL)
-end
 
 # ---------------------------------------------------------------------------
 # zero-copy array builder
@@ -306,9 +262,6 @@ end
 # owned release frees them. Covers utf8/binary, list, struct, bool, and (for
 # list/struct children) copied primitives.
 # ---------------------------------------------------------------------------
-const _ATOM_JULIA = Dict(:i8=>Int8, :u8=>UInt8, :i16=>Int16, :u16=>UInt16, :i32=>Int32,
-    :u32=>UInt32, :i64=>Int64, :u64=>UInt64, :f16=>Float16, :f32=>Float32, :f64=>Float64)
-
 _mbuf(n) = Ptr{Cvoid}(Libc.malloc(max(n, 1)))
 function _buffers(ptrs::Ptr{Cvoid}...)            # malloc a buffer-pointer array
     arr = Ptr{Ptr{Cvoid}}(Libc.malloc(sizeof(Ptr) * length(ptrs)))
@@ -553,10 +506,8 @@ function _init_callbacks()
     # target; precompile is belt-and-suspenders for the single method signature.)
     precompile(_release_array,       (Ptr{LibRerunC.ArrowArray},))
     precompile(_release_array_owned, (Ptr{LibRerunC.ArrowArray},))
-    precompile(_release_schema,      (Ptr{LibRerunC.ArrowSchema},))
     _ARRAY_RELEASE[]       = @cfunction(_release_array,       Cvoid, (Ptr{LibRerunC.ArrowArray},))
     _ARRAY_RELEASE_OWNED[] = @cfunction(_release_array_owned, Cvoid, (Ptr{LibRerunC.ArrowArray},))
-    _SCHEMA_RELEASE[]      = @cfunction(_release_schema,      Cvoid, (Ptr{LibRerunC.ArrowSchema},))
     return
 end
 

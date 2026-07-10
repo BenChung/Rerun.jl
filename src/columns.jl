@@ -14,21 +14,42 @@
 
 """
     TimeColumn(name, values; kind=:sequence)
+    TimeColumn(timeline::Timeline, values)
 
-A column of time points for `name`. `kind ∈ (:sequence, :duration, :timestamp)`;
-for `:duration`/`:timestamp`, `values` are nanoseconds. Length must match the
-component columns in the same `send_columns` call.
+A column of time points for `name`. `kind ∈ (:sequence, :duration, :timestamp)`
+— a [`Timeline`](@ref) supplies its own, and converts typed `values` exactly
+([`TimePoint`](@ref)/`DateTime` on timestamp timelines, `Dates.FixedPeriod` on
+duration timelines). Raw `Integer` values are nanoseconds for
+`:duration`/`:timestamp`. Length must match the component columns in the same
+`send_columns` call.
+
+Values already in wire layout are **aliased, not copied**: `Vector{Int64}` on
+any kind, and `Vector{TimePoint}` / `Vector{Nanosecond}` matching the
+timeline's kind. rerun reads the aliased memory in place and releases it
+asynchronously after batching — do not mutate or resize such a vector until
+the recording has flushed. Every other input (ranges, `DateTime`s, generic
+iterables) converts into a fresh vector.
 """
-struct TimeColumn
+struct TimeColumn{V<:AbstractVector{Int64}}
     name::String
     kind::Symbol
-    values::Vector{Int64}
+    values::V
 end
 TimeColumn(name::AbstractString, values; kind::Symbol=:sequence) =
-    TimeColumn(String(name), kind, Vector{Int64}(values))
+    TimeColumn(String(name), kind, _wire_values(values))
+TimeColumn(tl::Timeline, values) = TimeColumn(tl.name, kind(tl), _wire_values(tl, values))
+
+# Wire-layout (Int64) time values: alias vectors already in wire layout,
+# convert everything else into a fresh Vector{Int64}.
+_wire_values(v::Vector{Int64}) = v
+_wire_values(v::AbstractVector) = Vector{Int64}(v)
+_wire_values(::Timeline, v::Vector{Int64}) = v
+_wire_values(::Timeline{TimePoint}, v::Vector{TimePoint}) = reinterpret(Int64, v)
+_wire_values(::Timeline{Nanosecond}, v::Vector{Nanosecond}) = reinterpret(Int64, v)
+_wire_values(tl::Timeline, values) = Int64[_time_value(tl, v) for v in values]
 
 _astimecolumn(tc::TimeColumn) = tc
-_astimecolumn(p::Pair) = TimeColumn(first(p), last(p))     # "frame" => values  (sequence)
+_astimecolumn(p::Pair) = TimeColumn(first(p), last(p))     # "frame"/Timeline => values
 
 function _time_column(tc::TimeColumn)
     tt = get(_TIME_TYPES, tc.kind) do
@@ -61,11 +82,8 @@ function _zerocopy_list_column(handle, t::ArrowType, flat::AbstractVector, offse
 end
 
 # Unwrap a carrier component vector (Text/Blob/…) to its wire payload, mirroring
-# _build_component_array; the identity for flat components and a no-op for the
-# string-keyed API (where `data` is already wire-shaped, not Components).
-_carrier_payload(data::AbstractVector) =
-    eltype(data) <: Union{Component,Missing} ?
-        _payload(Base.nonmissingtype(eltype(data)), data) : data
+# _build_component_array; the identity for flat components.
+_carrier_payload(data::AbstractVector) = _payload(Base.nonmissingtype(eltype(data)), data)
 
 # List<component> with one instance per row (offsets 0,1,…,R).
 function _mono_column(handle, t::ArrowType, data::AbstractVector)
@@ -85,35 +103,70 @@ function _multi_column(handle, t::ArrowType, data::AbstractVector)
         _assembled(ArrowList(ArrowField("item", t, false)), data))
 end
 
+# Mono-vs-multi dispatches on the ORIGINAL element type; carriers then unwrap to
+# their wire payload — a component struct is one instance/row even when its
+# payload is itself a vector (Blob -> Vector{UInt8}), matching `log`.
+_column(handle, t, data::AbstractVector{<:Union{Component,Missing}}) =           # typed, one/row
+    _mono_column(handle, t, _carrier_payload(data))
+_column(handle, t, data::AbstractVector{<:AbstractVector{<:Union{Component,Missing}}}) =  # typed, batch/row
+    _multi_column(handle, t, [_carrier_payload(row) for row in data])
+_column(handle, t, data::AbstractVector{<:AbstractVector}) = _multi_column(handle, t, data)  # string API, batch/row
+_column(handle, t, data::AbstractVector) = _mono_column(handle, t, data)          # string API, one/row
+
 function _component_column(c::Pair)
     handle, t = _resolve_component(first(c))
-    data = last(c)
-    # Decide mono-vs-multi from the ORIGINAL element type, THEN unwrap carriers to
-    # their wire payload — a component struct is one instance/row even when its
-    # payload is itself a vector (Blob -> Vector{UInt8}). Without this unwrap a
-    # typed carrier column (Text/Blob/…) would crash, unlike the matching `log`.
-    if eltype(data) <: Union{Component,Missing}                          # typed, one/row
-        return _mono_column(handle, t, _carrier_payload(data))
-    elseif eltype(data) <: AbstractVector &&
-           eltype(eltype(data)) <: Union{Component,Missing}              # typed, batch/row
-        return _multi_column(handle, t, [_carrier_payload(row) for row in data])
-    elseif eltype(data) <: AbstractVector                                # string API, batch/row
-        return _multi_column(handle, t, data)
-    else                                                                  # string API, one/row
-        return _mono_column(handle, t, data)
-    end
+    return _column(handle, t, last(c))
 end
 
 """
+    send_columns(rec, entity_path, timelines::Tuple, columns::Tuple)
     send_columns(rec, entity_path, timelines, columns)
 
 Send `columns` as columnar data indexed by `timelines` (one logical row per
 index; all column lengths must match). Example:
 
     send_columns(rec, "world/points",
-        ["frame" => 0:99],                        # or TimeColumn(...; kind=:timestamp)
-        [Position3D => batches])                   # batches::Vector{Vector{Position3D}}, or a flat Vector for 1/row
+        (Timeline("frame") => 0:99,),              # or "frame" => 0:99, or TimeColumn(...)
+        (Position3D => batches,))                  # batches::Vector{Vector{Position3D}}, or a flat Vector for 1/row
+
+The tuple form keeps every pair's type concrete: component handles, Arrow
+types, and time-value conversions resolve statically, and the per-call C
+argument arrays are stack tuples. Vectors (or any iterables) also work, at the
+cost of dynamic dispatch per column.
+
+Zero-copy contract: flat component columns and wire-layout time columns (see
+[`TimeColumn`](@ref)) alias the caller's vectors — rerun reads them in place
+and releases them asynchronously, so keep them unmutated until the recording
+has flushed.
 """
+function send_columns(r::RecordingStream, entity_path::AbstractString, timelines::Tuple, columns::Tuple)
+    _drain_exports()
+    tcs   = map(_astimecolumn, timelines)         # NTuple; keeps the name Strings alive
+    tcols = map(_time_column, tcs)
+    local ccols
+    try
+        ccols = map(_component_column, columns)
+        tref = Ref(tcols); cref = Ref(ccols)
+        GC.@preserve tcs tref cref begin
+            pt = isempty(tcols) ? Ptr{LibRerunC.rr_time_column}(C_NULL) :
+                 Ptr{LibRerunC.rr_time_column}(Base.unsafe_convert(Ptr{typeof(tcols)}, tref))
+            pc = isempty(ccols) ? Ptr{LibRerunC.rr_component_column}(C_NULL) :
+                 Ptr{LibRerunC.rr_component_column}(Base.unsafe_convert(Ptr{typeof(ccols)}, cref))
+            checked(err -> LibRerunC.rr_recording_stream_send_columns(
+                r.handle, entity_path,
+                pt, UInt32(length(tcols)),
+                pc, UInt32(length(ccols)), err))
+        end
+    catch
+        # Build/send failed -> rerun never took ownership, so release the built
+        # column arrays ourselves (free C bookkeeping, unpin zero-copy roots).
+        for tc in tcols; _release_unpublished(tc.array); end
+        @isdefined(ccols) && for cc in ccols; _release_unpublished(cc.array); end
+        rethrow()
+    end
+    return r
+end
+
 function send_columns(r::RecordingStream, entity_path::AbstractString, timelines, columns)
     _drain_exports()
     tcs   = TimeColumn[_astimecolumn(t) for t in timelines]   # keeps the name Strings alive

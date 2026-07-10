@@ -3,15 +3,20 @@
 """
     RerunError <: Exception
 
-Raised when a fallible rerun_c call reports a non-OK `rr_error`.
+Raised when a fallible rerun call fails: `code` is the rerun_c `rr_error` code
+for C-reported failures, `nothing` for errors raised on the Julia side (e.g.
+librerun_query failures and query validation).
 """
 struct RerunError <: Exception
-    code::UInt32
+    code::Union{UInt32,Nothing}
     message::String
 end
+RerunError(message::AbstractString) = RerunError(nothing, String(message))
 
 function Base.showerror(io::IO, e::RerunError)
-    print(io, "RerunError(", _error_code_name(e.code), "): ", e.message)
+    print(io, "RerunError")
+    e.code === nothing || print(io, "(", _error_code_name(e.code), ")")
+    print(io, ": ", e.message)
 end
 
 # Decode the fixed 2048-byte description buffer (NUL-terminated UTF-8).

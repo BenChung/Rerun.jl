@@ -48,6 +48,12 @@ const _ATOM_FORMAT = Dict(
     :i8=>"c", :u8=>"C", :i16=>"s", :u16=>"S", :i32=>"i", :u32=>"I",
     :i64=>"l", :u64=>"L", :f16=>"e", :f32=>"f", :f64=>"g",
 )
+const _FORMAT_ATOM = Dict(v => k for (k, v) in _ATOM_FORMAT)
+
+# Julia storage eltype per atom tag (:bool is bit-packed and :null storageless,
+# so neither has a flat Julia element type).
+const _ATOM_JULIA = Dict(:i8=>Int8, :u8=>UInt8, :i16=>Int16, :u16=>UInt16, :i32=>Int32,
+    :u32=>UInt32, :i64=>Int64, :u64=>UInt64, :f16=>Float16, :f32=>Float32, :f64=>Float64)
 
 """
     arrow_format(t::ArrowType) -> String

@@ -1,34 +1,12 @@
-# BinaryBuilder recipe for librerun_query — the Arrow-C-Stream query shim.
-#
-# This file is the source-of-truth copy of the recipe. The canonical release
-# build lives in Yggdrasil (R/librerun_query/build_tarballs.jl); mirror this
-# file there when cutting a public release. Yggdrasil requires GitSource (no
-# DirectorySource / file://), which is why the source below is a GitSource.
-#
-# Local build (validates the recipe without pushing a tag): swap the GitSource
-# for a DirectorySource of the working tree, e.g.
-#   sources = [DirectorySource(joinpath(@__DIR__, "..");
-#                              target = "Rerun.jl")]
-# then run: julia --project build_tarballs.jl --deploy=local x86_64-linux-gnu
-# (Day-to-day dev does NOT need this: the in-repo librerun_query_jll/ stand-in
-#  resolves the lib from cargo output. Run a local BB build only to validate the
-#  recipe or to self-host a release. See native/README.md.)
-
 using BinaryBuilder, Pkg
 
 name = "librerun_query"
 version = v"0.1.0"
 
-# Pin to the Rerun.jl commit/tag holding the matching `native/` crate.
 sources = [
-    GitSource("https://github.com/BenChung/Rerun.jl.git", "FILL-IN-COMMIT-SHA"),
+    GitSource("https://github.com/BenChung/Rerun.jl.git", "2cbe6b14d1610981b4e4469cb99cca88376210f3"),
 ]
 
-# Build the `native/` subdir of the repo. The crate depends on the rerun crates
-# (via the `rerun` crate's `dataframe` feature), which pull zstd-sys and other
-# cc-rs crates — hence the env exports below, carried over from the librerun_c
-# recipe. NOTE: rerun 0.33 requires rustc >= 1.92; confirm BinaryBuilder's Rust
-# toolchain meets that MSRV (or pin a newer Rust) before building.
 script = raw"""
 cd $WORKSPACE/srcdir/Rerun*/native
 
@@ -52,13 +30,12 @@ filter!(p -> arch(p) != "riscv64", platforms)                     # no rust tool
 filter!(p -> !(Sys.isfreebsd(p) && arch(p) == "aarch64"), platforms)
 
 products = [
-    # Rust names the cdylib `rerun_query.dll` on Windows, `librerun_query.{so,dylib}` elsewhere.
     LibraryProduct(["librerun_query", "rerun_query"], :librerun_query),
 ]
 
 dependencies = Dependency[
     Dependency("CompilerSupportLibraries_jll"),
-    Dependency("Zstd_jll"; compat="1.5.7"),   # link system zstd, matching the librerun_c build
+    Dependency("Zstd_jll"; compat="1.5.7")
 ]
 
 build_tarballs(ARGS, name, version, sources, script, platforms, products, dependencies;

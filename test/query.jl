@@ -1,4 +1,5 @@
 using Rerun
+using Dates
 import Tables
 using Test
 
@@ -50,6 +51,11 @@ end
         @test length(Tables.getcolumn(Tables.columns(qr), :step)) == 0
     end
 
+    @testset "Timeline as query index" begin
+        cols = Tables.columns(Rerun.select(Rerun.view(rec; index=Timeline("step"))))
+        @test Tables.getcolumn(cols, :step) isa Rerun.ArrowColumn{Int64}
+    end
+
     @testset "getcolumn unknown name throws KeyError" begin
         cols = Tables.columns(Rerun.select(Rerun.view(rec; index="step")))
         @test_throws KeyError Tables.getcolumn(cols, :does_not_exist)
@@ -63,19 +69,42 @@ end
         @test occursin("Recording(", sprint(show, rec)) # compact form
     end
 
-    @testset "timestamp index timeline decodes (temporal -> Int64)" begin
+    @testset "timestamp timeline: introspection + ns-exact roundtrip" begin
         rect = RecordingStream("rrq_ts_test")
         outt = tempname() * ".rrd"
         Rerun.save(rect, outt)
-        t = collect(0:9)
-        t0 = 1_700_000_000_000_000_000
+        tstamp = Timeline("time", :timestamp)
+        tdur = Timeline("lag", :duration)
+        ns = 1_700_000_000_000_000_000 .+ (0:9) .* 1_000_000 .+ 123    # deliberately not ms-aligned
+        # TimePoint vector: aliased (reinterpret) rather than copied — the
+        # bit-exact readback below covers the aliasing path end-to-end.
         Rerun.send_columns(rect, "m/x",
-            [Rerun.TimeColumn("time", t0 .+ t .* 1_000_000; kind=:timestamp)],
-            ["rerun.components.Scalar" => Float64.(t)])
+            [Rerun.TimeColumn(tstamp, TimePoint.(ns)), Rerun.TimeColumn(tdur, (0:9) .* 1_000)],
+            ["rerun.components.Scalar" => Float64.(0:9)])
         flush(rect)
         sleep(0.2)
-        timecol = Tables.getcolumn(Tables.columns(Rerun.select(Rerun.view(Rerun.load_recording(outt); index="time"))), :time)
-        @test eltype(timecol) == Int64
-        @test length(timecol) == 10
+
+        rec2 = Rerun.load_recording(outt)
+        tls = Rerun.timelines(rec2)                                    # concrete Timeline{T}s from the file
+        @test Timeline{TimePoint}("time") in tls
+        @test Timeline{Nanosecond}("lag") in tls
+        tl = Rerun.timeline(rec2, "time")                              # the type-dynamic boundary
+        @test tl isa Timeline{TimePoint}
+        @test_throws RerunError Rerun.timeline(rec2, "nope")
+        @test_throws RerunError Rerun.view(rec2; index=Timeline("time"))  # sequence vs timestamp kind check
+
+        cols = Tables.columns(Rerun.select(Rerun.view(rec2; index=tl)))
+        timecol = Tables.getcolumn(cols, :time)
+        @test timecol isa Rerun.ArrowColumn{TimePoint}                 # typed AND zero-copy
+        @test [t.ns for t in timecol] == collect(ns)                   # bit-exact roundtrip
+        @test_throws InexactError DateTime(timecol[1])                 # sub-ms precision preserved
+        @test round(DateTime, timecol[1]) == DateTime(2023, 11, 14, 22, 13, 20)
+        lagcol = Tables.getcolumn(Tables.columns(Rerun.select(
+            Rerun.view(rec2; index=Rerun.timeline(rec2, "lag")))), :lag)
+        @test eltype(lagcol) == Nanosecond
+
+        # typed filter_range through the resolved timeline
+        v = Rerun.filter_range(Rerun.view(rec2; index=tl), TimePoint(ns[3]), TimePoint(ns[5]))
+        @test length(Tables.getcolumn(Tables.columns(Rerun.select(v)), :time)) == 3
     end
 end

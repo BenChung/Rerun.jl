@@ -1,25 +1,27 @@
-# A tour of component kinds: enums (per-type variant namespace), text/labels,
-# and assembled components logged via the string API.
+# A tour of component kinds: enums (per-type variant namespace), typed data
+# carriers (Text/Blob), and the string API for components without a typed
+# struct.
 #
 #   julia --project=. examples/components_tour.jl
 
 using Rerun
 using Rerun.Components
+import Rerun.Components: Text, Blob   # explicit: `Text` clashes with Base.Text
 
 rec = RecordingStream("rerun_example_tour")
 Rerun.save(rec, joinpath(@__DIR__, "tour.rrd"))
-Rerun.set_time(rec, "frame", 0)
+Rerun.set_time(rec, Timeline("frame"), 0)
 
 # Enum component: tab-completable per-type variants (Colormap.Inferno, ...).
 Rerun.log(rec, "depth", [Colormap.Inferno])
 
-# Text / labels (utf8, assembled exporter).
-Rerun.log(rec, "labels", "rerun.components.Text", ["alpha", "beta", "gamma"])
+# Typed data carriers: `Text` wraps a String (utf8), `Blob` wraps bytes
+# (list<u8>, logged zero-copy).
+Rerun.log(rec, "labels", [Text("alpha"), Text("beta"), Text("gamma")])
+Rerun.log(rec, "payload", [Blob(collect(0x00:0xff))])
 
-# Blob (list<u8>).
-Rerun.log(rec, "payload", "rerun.components.Blob", [collect(0x00:0xff)])
-
-# Booleans (bit-packed).
+# Components without a typed struct (bool, struct layouts) log via the string
+# API, resolved from the generated catalog.
 Rerun.log(rec, "flags", "rerun.components.ShowLabels", [true, false, true])
 
 flush(rec)

@@ -1,6 +1,7 @@
 using Rerun
 using Rerun.Components, Rerun.Archetypes
 import Rerun.Components: Text, Blob       # explicit (Text clashes with Base.Text)
+using Dates
 using Test
 
 const POS = NTuple{3,Float32}[(0,0,0), (1,2,3), (4,5,6)]
@@ -133,6 +134,10 @@ end
         [Text => [[Text("x"), Text("y")], [Text("z")]]])                # multi carrier (batch/row)
     Rerun.send_columns(rec, "blobs", ["frame" => 0:1],
         [Blob => [Blob(UInt8[1,2,3]), Blob(UInt8[4,5])]])               # mono Blob carrier
+    # tuple form: concretely-typed pairs, statically resolved columns
+    Rerun.send_columns(rec, "traj_t", (Timeline("frame") => 0:49,), (Position3D => pts,))
+    Rerun.send_columns(rec, "pc_t", ("frame" => 0:49,),
+        (Position3D => pts, Color => [Color(0xff00ffff) for _ in 1:50]))
     flush(rec)
     @test isfile(out) && filesize(out) > 0
 
@@ -142,6 +147,53 @@ end
     end
     flush(rec); GC.gc(); flush(rec)
     @test true
+end
+
+@testset "Timeline (typed index timelines)" begin
+    @test_throws ErrorException Timeline("t"; kind=:nope)
+    tl = Timeline("stamp", :timestamp)
+    @test tl isa Timeline{TimePoint}
+    @test tl.name == "stamp" && Rerun.kind(tl) == :timestamp
+    @test Timeline("frame") isa Timeline{Int64}
+    @test eltype(Timeline("lag", :duration)) == Nanosecond
+
+    rec = RecordingStream("rerun_jl_timeline")
+    out = tempname() * ".rrd"
+    Rerun.save(rec, out)
+    Rerun.set_time(rec, tl, 1_700_000_000_000_000_000)          # raw ns
+    Rerun.set_time(rec, tl, DateTime(2026, 7, 10))              # exact DateTime conversion
+    Rerun.set_time(rec, Timeline("lag", :duration), Second(5))  # exact Period conversion
+    @test_throws ErrorException Rerun.set_time(rec, Timeline("frame"), DateTime(2026, 7, 10))
+    Rerun.log(rec, "p", [Position3D((1f0, 2f0, 3f0))])
+    Rerun.send_columns(rec, "m", [Timeline("frame") => 0:4],    # pair sugar with a Timeline
+        ["rerun.components.Scalar" => Float64.(0:4)])
+    Rerun.send_columns(rec, "m2", [Rerun.TimeColumn(tl, (0:4) .* 1_000_000)],
+        ["rerun.components.Scalar" => Float64.(5:9)])
+    @test Rerun.disable_timeline(rec, tl) === rec
+
+    # wire-layout vectors are aliased, not copied; other inputs convert
+    raw = collect(Int64, 0:4)
+    @test Rerun.TimeColumn("t", raw).values === raw
+    tps = TimePoint.(1_000_000_000 .* collect(1:5))
+    @test parent(Rerun.TimeColumn(tl, tps).values) === tps
+    @test Rerun.TimeColumn(Timeline("f"), 0:4).values isa Vector{Int64}
+    flush(rec)
+    @test filesize(out) > 0
+end
+
+@testset "TimePoint (ns instants, exact conversions)" begin
+    dt = DateTime(2026, 7, 10, 12, 34, 56, 789)
+    ts = TimePoint(dt)
+    @test DateTime(ts) == dt                                    # ms-aligned: exact both ways
+    ts1 = ts + Nanosecond(123)
+    @test_throws InexactError DateTime(ts1)                     # sub-ms: rounding must be explicit
+    @test floor(DateTime, ts1) == dt
+    @test round(DateTime, ts1) == dt
+    @test ceil(DateTime, ts1) == dt + Millisecond(1)
+    @test ts1 - ts == Nanosecond(123)
+    @test ts1 - Nanosecond(123) == ts
+    @test ts < ts1
+    @test DateTime(TimePoint(0)) == DateTime(1970)
 end
 
 @testset "missing / validity bitmaps" begin

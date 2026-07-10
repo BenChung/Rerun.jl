@@ -1,5 +1,10 @@
 /target
 /dev-prefix
+# BinaryBuilder outputs (build_tarballs.jl): tarballs, build workspace, and the
+# recipe environment's Manifest.
+/products
+/build
+/Manifest.toml
 # Cargo.lock IS committed: this crate is a distributed cdylib, so the lockfile
 # pins transitive deps for reproducible JLL builds.
 

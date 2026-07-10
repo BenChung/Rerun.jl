@@ -21,10 +21,11 @@ else
 end
 
 # Animate a colored spiral; the viewer updates live as we log each frame.
+frame = Timeline("frame")
 n = 300
-for frame in 0:399
-    Rerun.set_time(rec, "frame", frame)
-    φ = frame * 0.04
+for f in 0:399
+    Rerun.set_time(rec, frame, f)
+    φ = f * 0.04
     pts  = [Position3D((cos(10π*i/n + φ) * Float32(i/n),
                         sin(10π*i/n + φ) * Float32(i/n),
                         Float32(i/n) * 2 - 1)) for i in 1:n]

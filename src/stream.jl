@@ -161,10 +161,14 @@ const _TIME_TYPES = Dict(
 
 """
     set_time(rec, timeline, value; kind=:sequence)
+    set_time(rec, timeline::Timeline, value)
 
 Set the current index on `timeline` for the calling thread (applies to
-subsequent logs from this thread). `kind ∈ (:sequence, :duration, :timestamp)`;
-for `:duration`/`:timestamp`, `value` is in **nanoseconds**.
+subsequent logs from this thread). `kind ∈ (:sequence, :duration, :timestamp)`
+— a [`Timeline`](@ref) supplies its own, and converts typed `value`s exactly
+([`TimePoint`](@ref)/`DateTime` on timestamp timelines, `Dates.FixedPeriod` on
+duration timelines). Raw `Integer` values are in **nanoseconds** for
+`:duration`/`:timestamp`.
 """
 function set_time(r::RecordingStream, timeline::AbstractString, value::Integer; kind::Symbol=:sequence)
     _drain_exports()
@@ -174,12 +178,13 @@ function set_time(r::RecordingStream, timeline::AbstractString, value::Integer; 
     checked(err -> LibRerunC.rr_recording_stream_set_time(r.handle, timeline, tt, Int64(value), err))
     return r
 end
+set_time(r::RecordingStream, tl::Timeline, value) = set_time(r, tl.name, _time_value(tl, value); kind=kind(tl))
 
 reset_time(r::RecordingStream) = (LibRerunC.rr_recording_stream_reset_time(r.handle); r)
 
 """Stop logging to `timeline` for subsequent calls (no-op if it doesn't exist)."""
-function disable_timeline(r::RecordingStream, timeline::AbstractString)
-    checked(err -> LibRerunC.rr_recording_stream_disable_timeline(r.handle, timeline, err))
+function disable_timeline(r::RecordingStream, timeline::Union{AbstractString,Timeline})
+    checked(err -> LibRerunC.rr_recording_stream_disable_timeline(r.handle, _timeline_name(timeline), err))
     return r
 end
 
@@ -242,16 +247,12 @@ function _handle(archetype::AbstractString, component::AbstractString,
         h == LibRerunC.RR_COMPONENT_TYPE_HANDLE_INVALID || return h
         # nullable=true: component batches are sparse — this lets us log `missing`
         # (null_count>0) against the same registered schema.
-        schema = _build_schema(t, last(split(component_type, '.')), true)
-        # rerun takes ownership of the schema and releases it (freeing the malloc'd
-        # format/name/children) on both success and failure, including the
-        # ARROW_FFI_SCHEMA_IMPORT_ERROR path. A Julia-side cleanup on the throwing
-        # path would double-free, so there is none.
+        schema = _OwnedSchema(t, last(split(component_type, '.')), true)
         a = String(archetype); c = String(component); ct = String(component_type)
         h = GC.@preserve a c ct begin
             desc = LibRerunC.rr_component_descriptor(_rrstr(a), _rrstr(c), _rrstr(ct))
             checked(err -> LibRerunC.rr_register_component_type(
-                LibRerunC.rr_component_type(desc, schema), err))
+                LibRerunC.rr_component_type(desc, _take!(schema)), err))
         end
         _HANDLES[c] = h
         return h

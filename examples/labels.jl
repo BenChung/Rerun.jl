@@ -12,7 +12,7 @@ import Rerun.Archetypes: Points3D
 rec = RecordingStream("rerun_example_labels")
 url = get(ENV, "RERUN_URL", nothing)
 url === nothing ? Rerun.save(rec, joinpath(@__DIR__, "labels.rrd")) : Rerun.connect_grpc(rec, url)
-Rerun.set_time(rec, "frame", 0)
+Rerun.set_time(rec, Timeline("frame"), 0)
 
 # A ring of points, each with a text label. `Text` wraps a String; the archetype
 # unwraps it to the utf8 component automatically.

@@ -59,6 +59,7 @@ fn set_error(err: *mut RrqError, code: u32, msg: &str) {
 pub struct RrqEngine {
     engine: QueryEngine<StorageEngine>,
     summary: CString, // one-line description for pretty-printing
+    timelines: Vec<(CString, u32)>, // (name, RRQ_TIMELINE_* kind), engine-lifetime
 }
 
 pub struct RrqQuery {
@@ -88,7 +89,39 @@ fn load_impl(path: &str) -> anyhow::Result<*mut RrqEngine> {
     }
     let engine = engines.into_values().next().expect("len checked == 1");
     let summary = describe(&engine);
-    Ok(Box::into_raw(Box::new(RrqEngine { engine, summary })))
+    let timelines = timelines_of(&engine);
+    Ok(Box::into_raw(Box::new(RrqEngine {
+        engine,
+        summary,
+        timelines,
+    })))
+}
+
+/// Timeline kind codes for `rrq_timeline_kind`.
+pub const RRQ_TIMELINE_SEQUENCE: u32 = 0;
+pub const RRQ_TIMELINE_DURATION: u32 = 1; // nanoseconds
+pub const RRQ_TIMELINE_TIMESTAMP: u32 = 2; // nanoseconds since Unix epoch
+
+fn timelines_of(engine: &QueryEngine<StorageEngine>) -> Vec<(CString, u32)> {
+    use re_query::StorageEngineLike as _;
+    use rerun::dataframe::external::re_log_types::TimeType;
+    engine.engine.with(|store, _cache| {
+        store
+            .schema()
+            .timelines()
+            .values()
+            .map(|tl| {
+                let kind = match tl.typ() {
+                    TimeType::Sequence => RRQ_TIMELINE_SEQUENCE,
+                    TimeType::DurationNs => RRQ_TIMELINE_DURATION,
+                    TimeType::TimestampNs => RRQ_TIMELINE_TIMESTAMP,
+                };
+                let name = CString::new(tl.name().to_string())
+                    .unwrap_or_else(|_| CString::new("timeline").expect("no NUL"));
+                (name, kind)
+            })
+            .collect()
+    })
 }
 
 /// One-line recording description: `"app_id" (recording_id) — N entities, M timelines: ...`.
@@ -138,6 +171,31 @@ pub extern "C" fn rrq_recording_summary(engine: *const RrqEngine) -> *const c_ch
     match unsafe { engine.as_ref() } {
         Some(e) => e.summary.as_ptr(),
         None => ptr::null(),
+    }
+}
+
+/// Number of index timelines in the recording.
+#[no_mangle]
+pub extern "C" fn rrq_timeline_count(engine: *const RrqEngine) -> usize {
+    unsafe { engine.as_ref() }.map_or(0, |e| e.timelines.len())
+}
+
+/// Borrows the name of timeline `i` (valid for the engine's lifetime), or
+/// null when `i` is out of range.
+#[no_mangle]
+pub extern "C" fn rrq_timeline_name(engine: *const RrqEngine, i: usize) -> *const c_char {
+    match unsafe { engine.as_ref() }.and_then(|e| e.timelines.get(i)) {
+        Some((name, _)) => name.as_ptr(),
+        None => ptr::null(),
+    }
+}
+
+/// Kind of timeline `i` (`RRQ_TIMELINE_*`), or `u32::MAX` when `i` is out of range.
+#[no_mangle]
+pub extern "C" fn rrq_timeline_kind(engine: *const RrqEngine, i: usize) -> u32 {
+    match unsafe { engine.as_ref() }.and_then(|e| e.timelines.get(i)) {
+        Some((_, kind)) => *kind,
+        None => u32::MAX,
     }
 }
 

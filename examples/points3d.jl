@@ -11,10 +11,11 @@ using Rerun.Components, Rerun.Archetypes
 rec = RecordingStream("rerun_example_points3d")
 Rerun.save(rec, joinpath(@__DIR__, "points3d.rrd"))
 
+frame = Timeline("frame")   # declared once; carries the timeline's kind everywhere
 n = 200
-for frame in 0:119
-    Rerun.set_time(rec, "frame", frame)
-    φ = frame * 0.04
+for f in 0:119
+    Rerun.set_time(rec, frame, f)
+    φ = f * 0.04
     pts  = [Position3D((cos(8π*i/n + φ) * Float32(i/n),
                         sin(8π*i/n + φ) * Float32(i/n),
                         Float32(i/n) * 2 - 1)) for i in 1:n]
@@ -26,7 +27,7 @@ for frame in 0:119
 end
 
 # Equivalent lower-level forms (one row, multiple component batches):
-Rerun.set_time(rec, "frame", 120)
+Rerun.set_time(rec, frame, 120)
 p = [Position3D((0f0,0f0,0f0)), Position3D((1f0,1f0,1f0))]
 Rerun.log(rec, "pair", p, [Color(0xff0000ff), Color(0x00ff00ff)])  # varargs of typed batches
 
