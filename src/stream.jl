@@ -1,5 +1,3 @@
-# RecordingStream: owning wrapper around the rerun_c stream handle.
-
 """
     RecordingStream(application_id; recording_id=nothing, default_enabled=true)
 
@@ -230,7 +228,7 @@ function log_file_contents(r::RecordingStream, path::AbstractString, contents::A
     return r
 end
 
-# --- component-type registration (global, cached by the descriptor `component`) ---
+# Component-type registration: global, cached by the descriptor `component`.
 # Bare component logs use component == component_type (empty archetype); archetype
 # logs use the qualified field name (e.g. "Points3D:positions"), which is a
 # distinct descriptor and therefore a distinct handle.

@@ -1,5 +1,4 @@
-# Exercises the RerunColorTypesExt package extension. Runs in an env that has
-# ColorTypes as a (test) dependency, which triggers the extension to load.
+# Exercises the RerunColorTypesExt package extension.
 
 using Rerun
 using Rerun.Components: Color

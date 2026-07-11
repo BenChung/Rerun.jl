@@ -22,9 +22,7 @@ use rerun::dataframe::{
 const MAX_BATCH_ROWS: usize = 65_536;
 const MAX_BATCH_BYTES: usize = 256 * 1024 * 1024;
 
-// ---------------------------------------------------------------------------
 // error reporting — inline buffer, no allocation (mirrors rerun_c's rr_error)
-// ---------------------------------------------------------------------------
 pub const RRQ_OK: u32 = 0;
 pub const RRQ_ERR_GENERIC: u32 = 1;
 pub const RRQ_ERR_PANIC: u32 = 2;
@@ -53,9 +51,7 @@ fn set_error(err: *mut RrqError, code: u32, msg: &str) {
     err.description[n] = 0;
 }
 
-// ---------------------------------------------------------------------------
 // opaque handles
-// ---------------------------------------------------------------------------
 pub struct RrqEngine {
     engine: QueryEngine<StorageEngine>,
     summary: CString, // one-line description for pretty-printing
@@ -71,16 +67,13 @@ pub struct RrqReader {
     schema: FFI_ArrowSchema, // owned; lent to the caller by `rrq_reader_schema`
 }
 
-// ---------------------------------------------------------------------------
 /// Returns the crate version (NUL-terminated, `'static`). Borrowed — do not free.
 #[no_mangle]
 pub extern "C" fn rrq_version() -> *const c_char {
     concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr() as *const c_char
 }
 
-// ---------------------------------------------------------------------------
 // load
-// ---------------------------------------------------------------------------
 fn load_impl(path: &str) -> anyhow::Result<*mut RrqEngine> {
     let engines = QueryEngine::from_rrd_filepath(&ChunkStoreConfig::DEFAULT, path)?;
     let n = engines.len();
@@ -207,9 +200,7 @@ pub extern "C" fn rrq_engine_free(engine: *mut RrqEngine) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // query builder
-// ---------------------------------------------------------------------------
 #[no_mangle]
 pub extern "C" fn rrq_query_new() -> *mut RrqQuery {
     Box::into_raw(Box::new(RrqQuery {
@@ -274,9 +265,7 @@ pub extern "C" fn rrq_query_fill_latest_at(query: *mut RrqQuery) {
     query.expr.sparse_fill_strategy = SparseFillStrategy::LatestAtGlobal;
 }
 
-// ---------------------------------------------------------------------------
 // execute -> streaming reader
-// ---------------------------------------------------------------------------
 fn select_impl(engine: &RrqEngine, query: &RrqQuery) -> anyhow::Result<*mut RrqReader> {
     let handle = engine.engine.query(query.expr.clone());
     let schema = FFI_ArrowSchema::try_from(handle.schema().as_ref())?;

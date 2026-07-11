@@ -1,13 +1,13 @@
 # Arrow C Data Interface array export (schemas are built/parsed in
 # arrow_schema.jl).
 #
-# Array buffers point directly into caller-owned Julia memory (ZERO COPY) for
+# Array buffers point directly into caller-owned Julia memory (zero copy) for
 # the primitive and fixed-size-list-of-primitive component layouts. Only small
 # C bookkeeping (the buffers/children pointer arrays and child structs) is
 # malloc'd.
 #
 # Ownership / lifetime: `rr_recording_stream_log` releases the array
-# ASYNCHRONOUSLY on a rerun background thread. The array release callback must
+# asynchronously on a rerun background thread. The array release callback must
 # therefore be pure C (no Julia runtime): it frees the malloc'd bookkeeping and
 # flips a flag in `private_data`. A Julia-side drain (`_drain_exports`, called
 # on every stream API entry) then drops the GC root keeping the data alive. A
@@ -37,7 +37,7 @@ function _release_array(p::Ptr{LibRerunC.ArrowArray})::Cvoid
         c.release != C_NULL && ccall(c.release, Cvoid, (Ptr{LibRerunC.ArrowArray},), cp)
         Libc.free(cp)
     end
-    a.n_buffers  > 0 && Libc.free(a.buffers)     # frees the pointer array, NOT zero-copy data
+    a.n_buffers  > 0 && Libc.free(a.buffers)     # frees the pointer array, not the zero-copy data
     a.n_children > 0 && Libc.free(a.children)
     if a.private_data != C_NULL
         # private_data is this export's stable released-flag (one Int). Release-
@@ -50,8 +50,8 @@ function _release_array(p::Ptr{LibRerunC.ArrowArray})::Cvoid
     return
 end
 
-# Release for ASSEMBLED nodes: every buffer is malloc'd-and-owned (offsets,
-# packed bits, copied bytes/values), so free the buffer DATA too. Fully C-owned
+# Release for assembled nodes: every buffer is malloc'd-and-owned (offsets,
+# packed bits, copied bytes/values), so free the buffer data too. Fully C-owned
 # — no Julia root, no registry/drain. Pure C; safe on the foreign thread.
 const _ARRAY_RELEASE_OWNED = Ref{Ptr{Cvoid}}(C_NULL)
 function _release_array_owned(p::Ptr{LibRerunC.ArrowArray})::Cvoid
@@ -159,13 +159,13 @@ function _drain_exports()
     return
 end
 
-# Release a built-but-UNPUBLISHED array — used when a log/send_columns call fails
+# Release a built-but-unpublished array — used when a log/send_columns call fails
 # before rerun takes ownership (otherwise the malloc'd bookkeeping leaks and, for
 # the zero-copy path, the GC root is pinned forever because the release callback
 # that flips its flag never fires). Invoking the array's own release callback does
 # exactly the right cleanup for both kinds (zero-copy: free bookkeeping + flip flag
 # so the next _drain_exports drops the root; owned: free the data buffers too).
-# On the error path rerun did NOT consume the array, so this is not a double-free.
+# On the error path rerun did not consume the array, so this is not a double-free.
 function _release_unpublished(a::LibRerunC.ArrowArray)
     a.release == C_NULL && return
     ref = Ref(a)
@@ -344,9 +344,9 @@ function _assembled(::Union{ArrowUtf8,ArrowBinary}, data::AbstractVector)
         @inbounds for (i, x) in enumerate(data)
             if x !== missing
                 nb = _nbytes(x)
-                # `_bytes` returns a GC-rootable OBJECT (not a bare pointer): for
+                # `_bytes` returns a GC-rootable object (not a bare pointer): for
                 # String/Vector{UInt8} it aliases the element (zero extra copy);
-                # other string/byte types materialize a temporary that MUST stay
+                # other string/byte types materialize a temporary that must stay
                 # rooted across the copy — hence we preserve `b`, the object, here.
                 if nb > 0
                     b = _bytes(x)
@@ -388,7 +388,7 @@ function _assembled(t::ArrowList, data::AbstractVector)
     return _owned_array(n, 2, _buffers(vptr, Ptr{Cvoid}(offp)), 1, kids, nc)
 end
 
-# fixed-size list: [validity] + 1 child of n*k items (NO offsets buffer). A null
+# fixed-size list: [validity] + 1 child of n*k items (no offsets buffer). A null
 # parent slot still occupies k child slots to preserve the fixed stride. Reached
 # only for an FSL nested in a non-flat parent (struct/list/union) — e.g. the
 # `axis` field of RotationAxisAngle; a top-level FSL-of-flat component is zero-copy.

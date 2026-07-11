@@ -12,9 +12,7 @@ import Tables
 
 const _LIB = librerun_query_jll.librerun_query
 
-# ---------------------------------------------------------------------------
 # C ABI: error type + ccall helpers
-# ---------------------------------------------------------------------------
 struct _RrqError
     code::UInt32
     description::NTuple{512,UInt8}
@@ -33,9 +31,7 @@ end
 
 _empty_aa() = _AA(0, 0, 0, 0, 0, C_NULL, C_NULL, C_NULL, C_NULL, C_NULL)
 
-# ---------------------------------------------------------------------------
 # handles
-# ---------------------------------------------------------------------------
 "A loaded Rerun recording, queryable with [`view`](@ref) and [`select`](@ref)."
 mutable struct Recording
     ptr::Ptr{Cvoid}
@@ -173,9 +169,7 @@ filter_range(v::RecordingView, lo, hi) =
 fill_latest_at(v::RecordingView) =
     (ccall((:rrq_query_fill_latest_at, _LIB), Cvoid, (Ptr{Cvoid},), v.ptr); v)
 
-# ---------------------------------------------------------------------------
 # batch lifetime: one owned ArrowArray per batch, released on finalize
-# ---------------------------------------------------------------------------
 mutable struct _Batch
     ref::Ref{_AA}
     released::Bool
@@ -202,10 +196,8 @@ Base.size(c::ArrowColumn) = size(c.data)
 Base.IndexStyle(::Type{<:ArrowColumn}) = Base.IndexLinear()
 Base.@propagate_inbounds Base.getindex(c::ArrowColumn, i::Int) = c.data[i]
 
-# ---------------------------------------------------------------------------
 # batch decode: `_decode(type, array, batch)` dispatches on the ArrowType
 # parsed from the reader's schema (arrow_schema.jl)
-# ---------------------------------------------------------------------------
 
 _bit(p::Ptr{UInt8}, k::Int) = p == C_NULL || ((unsafe_load(p, (k >> 3) + 1) >> (k & 7)) & 0x01) == 0x01
 
@@ -310,9 +302,7 @@ _empty_col(t::ArrowTemporal) = _temporal_eltype(t)[]
 _empty_col(::ArrowUtf8)  = String[]
 _empty_col(t::Union{ArrowList,ArrowFixedList}) = Vector{eltype(_empty_col(t.item.type))}[]
 
-# ---------------------------------------------------------------------------
 # Tables.jl source
-# ---------------------------------------------------------------------------
 struct ColumnBatch
     names::Vector{Symbol}
     cols::Vector{AbstractVector}

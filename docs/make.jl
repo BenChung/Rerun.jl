@@ -1,11 +1,9 @@
 using Documenter
 using Rerun
 
-# ---------------------------------------------------------------------------
 # Example pages are generated from the scripts in `examples/` so the docs stay
-# in sync with the runnable examples (no copy-paste drift). Each script's leading
-# `#` comment block becomes the page intro; the rest becomes a Julia code block.
-# ---------------------------------------------------------------------------
+# in sync with the runnable examples. Each script's leading `#` comment block
+# becomes the page intro; the rest becomes a Julia code block.
 const EX_DIR = normpath(@__DIR__, "..", "examples")
 const EX_OUT = joinpath(@__DIR__, "src", "examples")
 

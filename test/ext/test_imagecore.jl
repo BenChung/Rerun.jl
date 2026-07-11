@@ -1,13 +1,10 @@
-# Exercises the RerunImageCoreExt package extension. Runs in an env that has
-# ImageCore + ColorTypes (+ FixedPointNumbers) as test dependencies, which
-# triggers the extension to load.
+# Exercises the RerunImageCoreExt package extension.
 #
-# The load-bearing gotcha pinned here is IMAGE ORIENTATION: Julia matrices are
-# column-major and indexed `img[row, col]`; Rerun image blobs are ROW-major,
-# interleaved-pixel HWC. A transpose bug would put pixel (h=1,w=2) at the wrong
-# byte offset. We use a NON-SQUARE 2x3 image with distinct pixels and assert the
-# exact bytes for several (row,col) positions so any transpose / width-vs-height
-# swap is caught.
+# The load-bearing gotcha pinned here is image orientation: Julia matrices are
+# column-major and indexed `img[row, col]`; Rerun image blobs are row-major,
+# interleaved-pixel HWC. A transpose would put pixel (h=1,w=2) at the wrong byte
+# offset, so a non-square 2x3 image with distinct pixels pins the exact bytes at
+# several (row,col) positions.
 
 using Rerun
 using Rerun.Components: ImageBuffer
@@ -50,8 +47,7 @@ using Test
         pix(h, w) = Int.(raw[((h * width + w) * 3) .+ (1:3)])
         # Pure red at (row0,col0).
         @test pix(0, 0) == [255, 0, 0]
-        # GREEN at (row0,col1): if width and height were swapped (transpose), this
-        # slot would instead hold the (row1,col0) gray pixel. Pins the transpose.
+        # green at (row0,col1); a transpose (width/height swapped) would put the (row1,col0) gray pixel here instead.
         @test pix(0, 1) == [0, 255, 0]
         # Pure blue at (row0,col2).
         @test pix(0, 2) == [0, 0, 255]

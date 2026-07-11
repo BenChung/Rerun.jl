@@ -1,4 +1,4 @@
-# Materialized Rerun types: concrete structs that double as data carriers AND
+# Materialized Rerun types: concrete structs that double as data carriers and
 # dispatch tags. The generated structs in `generated_types.jl` subtype these and
 # provide the metadata methods below; the typed `log` methods then resolve the
 # component identity from the *type* (const-folded), with no string lookup on

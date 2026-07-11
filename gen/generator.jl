@@ -8,7 +8,7 @@ rerun_c_dir = joinpath(include_dir, "rerun/c")
 
 options = load_options(joinpath(@__DIR__, "generator.toml"))
 
-args = get_default_args()  # supplies the required base clang flags
+args = get_default_args()
 push!(args, "-I$include_dir")
 
 headers = [joinpath(rerun_c_dir, header) for header in readdir(rerun_c_dir) if endswith(header, ".h")]

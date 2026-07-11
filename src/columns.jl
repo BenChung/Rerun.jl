@@ -6,7 +6,7 @@
 # and releases them asynchronously.
 #
 # A component column is just a List over the component's Arrow type, so it reuses
-# the exporter. For flat components it stays ZERO-COPY: the offsets are a rooted
+# the exporter. For flat components it stays zero-copy: the offsets are a rooted
 # Julia `Vector{Int32}` (pointed into, not malloc'd) and the values point into
 # the (flattened) data — both kept alive by one registry slot, freed by the
 # normal zero-copy release/drain. Non-flat components fall back to an assembled
@@ -103,7 +103,7 @@ function _multi_column(handle, t::ArrowType, data::AbstractVector)
         _assembled(ArrowList(ArrowField("item", t, false)), data))
 end
 
-# Mono-vs-multi dispatches on the ORIGINAL element type; carriers then unwrap to
+# Mono-vs-multi dispatches on the original element type; carriers then unwrap to
 # their wire payload — a component struct is one instance/row even when its
 # payload is itself a vector (Blob -> Vector{UInt8}), matching `log`.
 _column(handle, t, data::AbstractVector{<:Union{Component,Missing}}) =           # typed, one/row

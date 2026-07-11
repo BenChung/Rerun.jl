@@ -22,9 +22,7 @@ const OUT   = joinpath(ROOT, "src", "generated_schemas.jl")
 const OUT_TYPES = joinpath(ROOT, "src", "generated_types.jl")
 const RERUN_SDK_VERSION = "0.33.0"
 
-# ---------------------------------------------------------------------------
 # 1. flatc:  IDL -> .bfbs -> reflection JSON
-# ---------------------------------------------------------------------------
 function load_reflection()
     mktempdir() do tmp
         flatc() do exe
@@ -36,10 +34,8 @@ function load_reflection()
     end
 end
 
-# ---------------------------------------------------------------------------
 # 2. Resolver (port of re_types_builder type_registry.rs).
 #    Emits runtime-constructor source strings directly (bottom-up).
-# ---------------------------------------------------------------------------
 const ATOMIC = Dict(
     "Bool"=>:bool, "Byte"=>:i8, "UByte"=>:u8, "Short"=>:i16, "UShort"=>:u16,
     "Int"=>:i32, "UInt"=>:u32, "Long"=>:i64, "ULong"=>:u64, "Float"=>:f32, "Double"=>:f64,
@@ -207,8 +203,7 @@ function julia_wire_elem(ctx::Ctx, t; override=nothing)
     return get(JL_PRIM, el, nothing)
 end
 
-# `override` is the field's `attr.rerun.override_type` (e.g. "float16" reinterprets a
-# ushort buffer); thread it so the wire/struct type matches the Arrow datatype.
+# Thread `override` so the wire/struct type matches the Arrow datatype.
 function julia_wire_type(ctx::Ctx, t; override=nothing)
     bt = String(t.base_type)
     if bt == "Obj"
@@ -295,9 +290,7 @@ function _arch_component(ctx::Ctx, t)
     return nothing
 end
 
-# ---------------------------------------------------------------------------
 # 3. Emit
-# ---------------------------------------------------------------------------
 function main()
     J = load_reflection()
     ctx = Ctx(J.objects, get(J, :enums, JSON3.Array[]), Dict{Int,String}())
@@ -362,11 +355,9 @@ function main()
         println(io, ")")
     end
 
-    # -----------------------------------------------------------------------
     # Materialized structs (data carriers + dispatch tags), zero-copy set:
     # components under `rerun.components.*` with a flat wire layout, and
     # archetypes under `rerun.archetypes.*`.
-    # -----------------------------------------------------------------------
     comp_structs = String[]; comp_names = String[]
     for o in ctx.objects
         fq = String(o.name)
@@ -407,8 +398,7 @@ $(ctor)    componenttype(::Type{$short}) = $(repr(fq))
         end
     end
 
-    # enum-backed components (in the `enums` table): wire type is the underlying
-    # int; variants are exposed per-type via getproperty (e.g. `Colormap.Inferno`).
+    # enum-backed components (in the `enums` table): wire type is the underlying int.
     for e in ctx.enums
         fq = String(e.name)
         startswith(fq, "rerun.components.") || continue
@@ -445,7 +435,7 @@ $(ctor)    componenttype(::Type{$short}) = $(repr(fq))
         push!(arch_names, short)
         req = [f[1] for f in flds if f[4]]; opt = [f[1] for f in flds if !f[4]]
         # constructor: required fields positional, optional kwargs (default nothing);
-        # store ALL into the NamedTuple so its type encodes presence.
+        # store all into the NamedTuple so its type encodes presence.
         kw = join(["$o=nothing" for o in opt], ", ")
         sig = isempty(req) ? "$short(; $kw)" :
               (isempty(opt) ? "$short(" * join(req, ", ") * ")" : "$short(" * join(req, ", ") * "; $kw)")

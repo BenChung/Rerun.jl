@@ -44,10 +44,9 @@ TransformMat3x3(r::RotMatrix{3}) = TransformMat3x3(map(Float32, Tuple(r.mat)))
 # Any other Rotation{3} (RotationVec, MRP, RotXYZ, ...) converts via quaternion.
 RotationQuat(r::Rotation{3}) = RotationQuat(QuatRotation(r))
 
-# Transform3D sugar: each representation maps to its faithful Rerun field —
-# AngleAxis -> rotation_axis_angle, RotMatrix{3} -> mat3x3, anything else ->
-# quaternion. Archetype fields are batches, so single values wrap in length-1
-# vectors; extra kwargs (translation, ...) forward through.
+# Each rotation type maps to its most faithful Rerun field, with quaternion as
+# the general fallback. Archetype fields are batches, so single values wrap in
+# length-1 vectors; extra kwargs (translation, ...) forward through.
 Transform3D(aa::AngleAxis; kwargs...) =
     Transform3D(; rotation_axis_angle = [_rotation_axis_angle(aa)], kwargs...)
 

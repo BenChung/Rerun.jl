@@ -1,10 +1,9 @@
-# Exercises the RerunMeshesExt package extension. Runs in an env that has Meshes
-# as a (test) dependency, which triggers the extension to load.
+# Exercises the RerunMeshesExt package extension.
 #
 # Pins the load-bearing gotchas with concrete assertions:
-#   * SimpleMesh face reindexing: Meshes is 1-BASED, Rerun is 0-BASED.
-#   * Box -> Boxes3D: center = (min+max)/2, half_size = (max-min)/2 (NOT min/max,
-#     NOT full size).
+#   * SimpleMesh face reindexing: Meshes is 1-based, Rerun is 0-based.
+#   * Box -> Boxes3D: center = (min+max)/2, half_size = (max-min)/2, not the
+#     corners and not the full size.
 #   * Coordinate extraction narrows Float64 -> Float32 (Meshes points are not
 #     wire-shaped; every mapping copies).
 
@@ -39,8 +38,8 @@ using Test
 
     @testset "SimpleMesh -> Mesh3D: face reindexing 1-based -> 0-based (GOTCHA)" begin
         # A unit square split into two triangles. Meshes connectivity is 1-based.
-        # NOTE: SimpleMesh needs a CONCRETELY-typed point vector, so build with a
-        # bare comprehension (not `Meshes.Point[...]`, which widens to abstract).
+        # SimpleMesh needs a concretely-typed point vector, so build it with a bare
+        # comprehension; `Meshes.Point[...]` widens to an abstract eltype.
         pts = [
             Meshes.Point(0.0, 0.0, 0.0),
             Meshes.Point(1.0, 0.0, 0.0),
@@ -60,7 +59,7 @@ using Test
         @test verts[3].xyz === (1f0, 1f0, 0f0)
 
         @test length(faces) == 2
-        # THE GOTCHA: 1-based (1,2,3),(1,3,4) MUST become 0-based (0,1,2),(0,2,3).
+        # 1-based (1,2,3),(1,3,4) become 0-based (0,1,2),(0,2,3).
         @test faces[1].indices === (UInt32(0), UInt32(1), UInt32(2))
         @test faces[2].indices === (UInt32(0), UInt32(2), UInt32(3))
         # Every emitted index is strictly < vertex count (no off-by-one overflow).
@@ -87,9 +86,7 @@ using Test
     end
 
     @testset "Box -> Boxes3D: center + half-size (GOTCHA)" begin
-        # Box from (2,4,6) to (4,8,12):
-        #   center    = (3, 6, 9)
-        #   half_size = (1, 2, 3)   (NOT the corners, NOT the full extents 2,4,6)
+        # Box from (2,4,6) to (4,8,12): center (3,6,9), half_size (1,2,3), not the corners or full extents.
         b = Meshes.Box(Meshes.Point(2.0, 4.0, 6.0), Meshes.Point(4.0, 8.0, 12.0))
         c, h = ext._box_center_halfsize(b)
         @test c isa Position3D

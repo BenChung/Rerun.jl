@@ -1,5 +1,4 @@
-# Exercises the RerunStaticArraysExt package extension. Runs in an env that has
-# StaticArrays as a (test) dependency, which triggers the extension to load.
+# Exercises the RerunStaticArraysExt package extension.
 
 using Rerun
 using Rerun.Components: Position2D, Position3D, TransformMat3x3

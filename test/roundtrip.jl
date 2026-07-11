@@ -1,6 +1,6 @@
 using Rerun
 using Rerun.Components, Rerun.Archetypes
-import Rerun.Components: Text, Blob       # explicit (Text clashes with Base.Text)
+import Rerun.Components: Text, Blob       # Text clashes with Base.Text
 using Dates
 using Test
 

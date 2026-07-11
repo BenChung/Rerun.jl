@@ -1,5 +1,4 @@
-# Exercises the RerunRotationsExt package extension. Runs in an env that has
-# Rotations as a (test) dependency, which triggers the extension to load.
+# Exercises the RerunRotationsExt package extension.
 
 using Rerun
 using Rerun.Components: RotationQuat, TransformMat3x3
@@ -12,16 +11,16 @@ using Test
     ext = Base.get_extension(Rerun, :RerunRotationsExt)
 
     @testset "QuatRotation -> RotationQuat (scalar-last w-order: THE gotcha)" begin
-        # A known, non-symmetric quaternion. Rotations/Quaternions store it
-        # SCALAR-FIRST as (w, x, y, z); Rerun RotationQuat must be SCALAR-LAST
-        # (x, y, z, w). Use distinct components so a wrong permutation can't pass.
+        # A known, non-symmetric quaternion. Rotations/Quaternions store it scalar-first
+        # as (w, x, y, z); Rerun RotationQuat is scalar-last (x, y, z, w). Distinct
+        # components catch a wrong permutation.
         q = QuatRotation(0.1, 0.2, 0.3, 0.4)   # constructor is (w, x, y, z), normalized
         p = Rotations.params(q)                # SVector(w, x, y, z)
         rq = RotationQuat(q)
         @test rq isa RotationQuat
         # Pin the reorder: Rerun slot order is (x, y, z, w) == params (2,3,4,1).
         @test rq.quaternion == (Float32(p[2]), Float32(p[3]), Float32(p[4]), Float32(p[1]))
-        # And explicitly: the scalar (w) must land in the LAST slot, not the first.
+        # The scalar (w) lands in the last slot, not the first.
         @test rq.quaternion[4] == Float32(p[1])          # w last
         @test rq.quaternion[1] == Float32(p[2])          # x first
         @test rq.quaternion[1] != rq.quaternion[4]       # would coincide if mis-ordered as [w,x,y,z]
@@ -36,8 +35,8 @@ using Test
         ax = rotation_axis(aa)
         @test nt.axis == (Float32(ax[1]), Float32(ax[2]), Float32(ax[3]))
         @test nt.axis == (0f0, 0f0, 1f0)       # unit axis along +z
-        # The NamedTuple field names MUST match the Rerun RotationAxisAngle Arrow
-        # struct (axis, angle) so the assembled export path's getfield works.
+        # The NamedTuple field names must match the Rerun RotationAxisAngle Arrow struct
+        # (axis, angle) so the assembled export path's getfield works.
         @test propertynames(nt) == (:axis, :angle)
     end
 

@@ -1,5 +1,4 @@
-# Exercises the RerunQuaternionsExt package extension. Runs in an env that has
-# Quaternions as a (test) dependency, which triggers the extension to load.
+# Exercises the RerunQuaternionsExt package extension.
 
 using Rerun
 using Rerun.Components: RotationQuat
@@ -10,16 +9,14 @@ using Test
     @test Base.get_extension(Rerun, :RerunQuaternionsExt) !== nothing
 
     @testset "scalar constructor reorders w-first -> xyzw (THE gotcha)" begin
-        # Quaternions.Quaternion(s, v1, v2, v3) is SCALAR-FIRST:
-        #   s  = real/scalar part = w
-        #   v1 = x, v2 = y, v3 = z
-        # Rerun RotationQuat stores [x, y, z, w] (scalar LAST). Pin the reorder
-        # with distinct coefficients so a missed permutation can't pass.
+        # Quaternions.Quaternion(s, v1, v2, v3) is scalar-first: s = w, v1 = x, v2 = y,
+        # v3 = z. Rerun RotationQuat stores [x, y, z, w] with the scalar last, so
+        # distinct coefficients here catch a missed permutation.
         q = Quaternion(10.0, 1.0, 2.0, 3.0)   # (s=10=w, x=1, y=2, z=3)
         @test real(q) == 10.0                  # confirm scalar-first orientation
         rq = RotationQuat(q)
         @test rq isa RotationQuat
-        # xyzw: x=1, y=2, z=3, w=10  (NOT (10,1,2,3))
+        # xyzw: x=1, y=2, z=3, w=10, not (10,1,2,3)
         @test rq.quaternion === (1f0, 2f0, 3f0, 10f0)
         @test eltype(rq.quaternion) === Float32     # converted to Float32
     end

@@ -17,7 +17,7 @@ using ColorTypes
 # binding deprecates on Julia 1.12); also dodges the `ColorTypes.Color` name clash.
 import Rerun.Components: Color
 
-# N0f8 is a normalized 8-bit value; `reinterpret(UInt8, c)` is the exact 0..255 byte.
+# N0f8 is a normalized 8-bit value.
 using ColorTypes.FixedPointNumbers: N0f8
 
 # Wire-layout tripwire: a schema regen that changes Color fails precompile here.

@@ -1,6 +1,4 @@
-# Exercises the RerunCoordinateTransformationsExt package extension. Runs in an
-# env that has CoordinateTransformations (and Rotations) as test dependencies,
-# which triggers the extension to load.
+# Exercises the RerunCoordinateTransformationsExt package extension.
 #
 # Load-bearing gotcha: quaternion component order. Rotations.jl stores
 # quaternions scalar-first (w, x, y, z); Rerun's RotationQuat stores them
@@ -53,19 +51,18 @@ using Test
         c = Float32(cos(pi / 4))
         s = Float32(sin(pi / 4))
 
-        # GOTCHA: Rerun stores (x, y, z, w) — scalar (w) LAST. If the reorder were
-        # skipped, q_rerun[1] would be ~0.707 (the scalar) and q_rerun[4] ~0.
+        # Rerun stores (x, y, z, w) with the scalar (w) last; skipping the reorder would leave the scalar ~0.707 in q_rerun[1] and ~0 in q_rerun[4].
         @test q_rerun[1] ≈ Float32(wxyz[2]) atol=1e-6   # x
         @test q_rerun[2] ≈ Float32(wxyz[3]) atol=1e-6   # y
         @test q_rerun[3] ≈ Float32(wxyz[4]) atol=1e-6   # z
-        @test q_rerun[4] ≈ Float32(wxyz[1]) atol=1e-6   # w  (scalar LAST)
+        @test q_rerun[4] ≈ Float32(wxyz[1]) atol=1e-6   # w (scalar last)
 
         # Concrete numeric pin for RotZ(90deg): xyzw = (0, 0, sin45, cos45).
         @test q_rerun[1] ≈ 0f0 atol=1e-6
         @test q_rerun[2] ≈ 0f0 atol=1e-6
         @test q_rerun[3] ≈ s atol=1e-6
         @test q_rerun[4] ≈ c atol=1e-6
-        # Scalar component is NOT in the first slot (would be if mis-ordered w,x,y,z).
+        # scalar is in the last slot, not the first (would be first if mis-ordered w,x,y,z)
         @test !isapprox(q_rerun[1], c; atol=1e-6)
     end
 

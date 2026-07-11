@@ -3,8 +3,7 @@ using Dates
 import Tables
 using Test
 
-# Log two entities on alternating steps so the queried-back columns are sparse
-# (each entity is NULL on the steps where the other was sampled).
+# Alternating steps make each entity's column sparse -- NULL wherever the other was sampled.
 function _sparse_recording()
     rec = RecordingStream("rrq_query_test")
     out = tempname() * ".rrd"
@@ -76,8 +75,7 @@ end
         tstamp = Timeline("time", :timestamp)
         tdur = Timeline("lag", :duration)
         ns = 1_700_000_000_000_000_000 .+ (0:9) .* 1_000_000 .+ 123    # deliberately not ms-aligned
-        # TimePoint vector: aliased (reinterpret) rather than copied — the
-        # bit-exact readback below covers the aliasing path end-to-end.
+        # TimePoint vector is aliased via reinterpret, not copied.
         Rerun.send_columns(rect, "m/x",
             [Rerun.TimeColumn(tstamp, TimePoint.(ns)), Rerun.TimeColumn(tdur, (0:9) .* 1_000)],
             ["rerun.components.Scalar" => Float64.(0:9)])

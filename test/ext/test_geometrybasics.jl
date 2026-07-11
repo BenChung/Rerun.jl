@@ -1,6 +1,5 @@
-# Exercises the RerunGeometryBasicsExt package extension. Runs in an env that has
-# GeometryBasics (and StaticArrays) as (test) dependencies, which triggers the
-# extension to load. Pins the documented gotchas with concrete assertions:
+# Exercises the RerunGeometryBasicsExt package extension. Pins the documented
+# gotchas with concrete assertions:
 #   * Rect origin+widths -> Rerun center + half-size
 #   * Polygon ring is closed (first vertex appended)
 #   * Mesh face indices are reindexed 1-based -> 0-based UInt32
@@ -32,7 +31,7 @@ _field(a, name) = getfield(a.fields, name)
         cen  = _field(boxes, :centers)
         @test half[1] isa HalfSize3D
         @test cen[1] isa Translation3D
-        # GOTCHA: half-size is widths/2, center is origin + widths/2.
+        # half-size is widths/2, center is origin + widths/2.
         @test half[1].xyz == (2f0, 3f0, 4f0)
         @test cen[1].vector == (3f0, 5f0, 7f0)
     end
@@ -68,7 +67,7 @@ _field(a, name) = getfield(a.fields, name)
         if !isempty(ring) && first(ring) != last(ring)
             ring = vcat(ring, [first(ring)])
         end
-        @test length(ring) == 4                       # GOTCHA: closed (3 + 1)
+        @test length(ring) == 4                       # closed (3 + 1)
         @test ring[end] == ring[1]                    # last == first
         sp = EXT._strip2d(ring)
         @test sp isa LineStrip2D
@@ -89,7 +88,7 @@ _field(a, name) = getfield(a.fields, name)
         @test length(vpos) == 4
         @test length(tris) == 2
         @test tris[1] isa TriangleIndices
-        # GOTCHA: GeometryBasics faces are 1-based; Rerun wants 0-based.
+        # GeometryBasics faces are 1-based; Rerun wants 0-based.
         @test tris[1].indices == (0x0, 0x1, 0x2)
         @test tris[2].indices == (0x0, 0x2, 0x3)
         # No index may equal the 1-based original max (4) -> proves the -1 happened.
@@ -103,7 +102,7 @@ _field(a, name) = getfield(a.fields, name)
         half = _field(e, :half_sizes)
         cen  = _field(e, :centers)
         @test half[1] isa HalfSize3D
-        # GOTCHA: a sphere is an ellipsoid with equal half-sizes on all 3 axes.
+        # a sphere is an ellipsoid with equal half-sizes on all 3 axes.
         @test half[1].xyz == (2.5f0, 2.5f0, 2.5f0)
         @test cen[1].vector == (1f0, 2f0, 3f0)
     end

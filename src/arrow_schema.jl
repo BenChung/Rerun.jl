@@ -14,10 +14,6 @@ const _AA = LibRerunC.ArrowArray
 
 const ARROW_FLAG_NULLABLE = Int64(2)
 
-# ---------------------------------------------------------------------------
-# export boundary: _OwnedSchema builds, owns, and hands off malloc'd C schemas
-# ---------------------------------------------------------------------------
-
 """
     _OwnedSchema(t::ArrowType, name, nullable)
 
@@ -106,13 +102,7 @@ function _init_schema_release()
     return
 end
 
-# ---------------------------------------------------------------------------
-# parse: ArrowSchema -> ArrowType
-# ---------------------------------------------------------------------------
-# Import-side inverse of `arrow_format`, over the column layouts the dataframe
-# reader decodes: primitives, bool, utf8, list, fixed-size list, and temporal
-# (as the integer storage atom). Any other layout errors here — with the column
-# name — before the first batch is pulled.
+# Import-side inverse of `arrow_format`; unsupported column layouts error with the column name before the first batch is pulled.
 
 _sname(p::Ptr{_AS}) = (s = unsafe_load(p); s.name == C_NULL ? "" : unsafe_string(s.name))
 
