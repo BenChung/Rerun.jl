@@ -40,4 +40,28 @@ end
 
 export RecordingStream, RerunError, LogSink, GrpcSink, FileSink, TimeColumn, Timeline, TimePoint
 
+# The unexported public API, accessed as `Rerun.f(...)`. The `public` keyword
+# parses on Julia ≥ 1.11 only, so it is evaluated behind a version gate.
+@static if VERSION >= v"1.11"
+    eval(Meta.parse("public " * join([
+        # stream lifecycle + sinks
+        "is_enabled", "save", "connect_grpc", "spawn", "serve_grpc", "to_stdout",
+        "set_sinks", "set_global!", "set_thread_local!", "SpawnOptions",
+        # time
+        "set_time", "reset_time", "disable_timeline", "kind",
+        # logging
+        "log", "log_archetype", "log_tensor", "log_file", "log_file_contents",
+        "send_columns",
+        # queries
+        "load_recording", "Recording", "timelines", "timeline", "view",
+        "RecordingView", "set_contents!", "filter_range", "fill_latest_at",
+        "select", "QueryResult", "ArrowColumn",
+        # introspection + utilities
+        "version", "component_arrow_type", "archetype_fields",
+        "escape_entity_path_part", "video_frame_timestamps_nanos",
+        # generated catalogs
+        "Components", "Archetypes", "Blueprint",
+    ], ", ")))
+end
+
 end # module Rerun

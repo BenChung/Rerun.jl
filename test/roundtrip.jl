@@ -101,7 +101,7 @@ end
 
     # assembled fixed-size-list child (the RotationAxisAngle `axis` field): [validity]
     # + 1 child of n*3 f32 (no offsets).
-    aa = Rerun.COMPONENT_TYPES["rerun.components.RotationAxisAngle"]
+    aa = Rerun.component_arrow_type("rerun.components.RotationAxisAngle")
     @test any(f -> f.type isa Rerun.ArrowFixedList && f.type.n == 3, aa.fields)
 
     # assembled buffers are freed by the owned release on rerun's bg thread
@@ -170,6 +170,8 @@ end
     Rerun.send_columns(rec, "m2", [Rerun.TimeColumn(tl, (0:4) .* 1_000_000)],
         ["rerun.components.Scalar" => Float64.(5:9)])
     @test Rerun.disable_timeline(rec, tl) === rec
+    @test Rerun.reset_time(rec) === rec
+    Rerun.log(rec, "p", [Position3D((0f0, 0f0, 0f0))])   # logging still works after reset
 
     # wire-layout vectors are aliased, not copied; other inputs convert
     raw = collect(Int64, 0:4)

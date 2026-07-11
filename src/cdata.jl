@@ -182,10 +182,11 @@ _is_flat(::ArrowType)       = false
 """
     _build_component_array(t, data) -> ArrowArray
 
-For a flat layout whose element type matches, build a ZERO-COPY array pointing
-into `data` (kept alive via the registry until rerun releases it). Otherwise
-build an ASSEMBLED array: buffers malloc'd-and-copied, freed by the owned
-release on rerun's thread — no Julia root, nothing points into `data`.
+For a flat layout whose element type matches — or a top-level list of such —
+build a ZERO-COPY array pointing into `data` (kept alive via the registry
+until rerun releases it). Every other layout builds an ASSEMBLED array:
+buffers malloc'd-and-copied, freed by the owned release on rerun's thread —
+no Julia root, nothing points into `data`.
 """
 # Build an Arrow validity bitmap (1 bit/elem, 1=valid) for a possibly-`missing`
 # vector, or `(nothing, 0)` when the element type can't be `missing`. The

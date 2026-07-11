@@ -55,6 +55,21 @@ end
         @test Tables.getcolumn(cols, :step) isa Rerun.ArrowColumn{Int64}
     end
 
+    @testset "fill_latest_at + contents restriction" begin
+        v = Rerun.fill_latest_at(Rerun.view(rec; index="step"))
+        cols = Tables.columns(Rerun.select(v))
+        step = Tables.getcolumn(cols, :step)
+        a = Tables.getcolumn(cols, _colnamed(cols, "m/a"))
+        bystep = Dict(step[i] => a[i] for i in eachindex(step))
+        @test bystep[1] == [0.0]                       # odd step forward-filled from step 0
+        @test bystep[99] == [98.0]
+
+        vc = Rerun.view(rec; index="step", contents=["m/a"])
+        names_c = Tables.columnnames(Tables.columns(Rerun.select(vc)))
+        @test any(n -> occursin("m/a", String(n)), names_c)
+        @test !any(n -> occursin("m/b", String(n)), names_c)
+    end
+
     @testset "getcolumn unknown name throws KeyError" begin
         cols = Tables.columns(Rerun.select(Rerun.view(rec; index="step")))
         @test_throws KeyError Tables.getcolumn(cols, :does_not_exist)

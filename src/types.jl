@@ -36,14 +36,6 @@ function log(r::RecordingStream, entity_path::AbstractString, ::Type{C},
     _log_tuple(r, entity_path, ((h, arrowtype(C), data),); inject_time=inject_time)
 end
 
-"""
-    log(rec, entity_path, batch::AbstractVector{<:Component}...)
-
-Log one or more materialized component batches as a single row, e.g.
-`log(rec, "p", points)` or `log(rec, "p", points, colors)`. Each batch's
-component identity comes from its element type, making this path fully
-type-specialized and zero-copy.
-"""
 # Wire payload of a component batch (applied in `_build_component_array`). Flat
 # components are already wire-shaped, so this is the identity (keeps the
 # zero-copy path); carriers (e.g. Text/Blob) override it to unwrap their field

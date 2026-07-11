@@ -42,6 +42,9 @@ end
 *non-blocking* flush, so call `flush(rec)` first if you need delivery."""
 Base.close(r::RecordingStream) = _free!(r)
 
+"""True when the stream records data. A stream constructed with
+`default_enabled=false`, or disabled via the `RERUN` environment variable,
+drops all log calls."""
 is_enabled(r::RecordingStream) = checked(err -> LibRerunC.rr_recording_stream_is_enabled(r.handle, err))
 
 # rr_string-typed ccall arguments take a plain Julia string directly: ccall
@@ -161,11 +164,12 @@ const _TIME_TYPES = Dict(
     set_time(rec, timeline::Timeline, value)
 
 Set the current index on `timeline` for the calling thread (applies to
-subsequent logs from this thread). `kind ∈ (:sequence, :duration, :timestamp)`
-— a [`Timeline`](@ref) supplies its own, and converts typed `value`s exactly
-([`TimePoint`](@ref)/`DateTime` on timestamp timelines, `Dates.FixedPeriod` on
-duration timelines). Raw `Integer` values are in **nanoseconds** for
-`:duration`/`:timestamp`.
+subsequent logs from this thread). `kind` is one of `:sequence`, `:duration`,
+or `:timestamp`; a [`Timeline`](@ref) supplies its own. Conversion of `value`:
+
+- raw `Integer` on `:duration` or `:timestamp` — nanoseconds;
+- [`TimePoint`](@ref) or `DateTime` on a timestamp [`Timeline`](@ref) — converted exactly;
+- `Dates.FixedPeriod` on a duration [`Timeline`](@ref) — converted exactly.
 """
 function set_time(r::RecordingStream, timeline::AbstractString, value::Integer; kind::Symbol=:sequence)
     _drain_exports()
@@ -177,6 +181,8 @@ function set_time(r::RecordingStream, timeline::AbstractString, value::Integer; 
 end
 set_time(r::RecordingStream, tl::Timeline, value) = set_time(r, tl.name, _time_value(tl, value); kind=kind(tl))
 
+"""Clear every index value set by [`set_time`](@ref) for the calling thread;
+subsequent logs carry only rerun's built-in timelines."""
 reset_time(r::RecordingStream) = (LibRerunC.rr_recording_stream_reset_time(r.handle); r)
 
 """Stop logging to `timeline` for subsequent calls (no-op if it doesn't exist)."""

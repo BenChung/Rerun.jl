@@ -16,11 +16,15 @@ using Dates
 
 An instant with nanosecond precision: `ns` nanoseconds since the Unix epoch
 (1970-01-01T00:00:00 UTC) — the exact wire value of Rerun timestamp timelines.
-`TimePoint(dt)` is always exact (milliseconds ⊂ nanoseconds). `DateTime(ts)`
-succeeds when `ts` is millisecond-aligned and throws `InexactError` otherwise;
-`round(DateTime, ts)` (or `floor`/`ceil`) converts lossily on purpose.
-Arithmetic with `Dates.FixedPeriod` is exact: `ts + Nanosecond(1)`,
-`ts2 - ts1 :: Nanosecond`.
+
+Conversions:
+
+| conversion | result |
+|------------|--------|
+| `TimePoint(dt)` | exact (milliseconds ⊂ nanoseconds) |
+| `DateTime(ts)` | exact when `ts` is millisecond-aligned, else `InexactError` |
+| `round(DateTime, ts)`, `floor(DateTime, ts)`, `ceil(DateTime, ts)` | lossy on purpose |
+| `ts + Nanosecond(1)`, `ts2 - ts1 :: Nanosecond` | exact `Dates.FixedPeriod` arithmetic |
 """
 struct TimePoint
     ns::Int64
@@ -58,9 +62,16 @@ end
     Timeline(name; kind=:sequence)
     Timeline(name, kind::Symbol)
 
-A named index timeline whose time values have type `T` — the canonical
-representation of its kind: `Int64` (`:sequence`), `Nanosecond` (`:duration`),
-[`TimePoint`](@ref) (`:timestamp`). Accepted wherever a timeline name string
+A named index timeline whose time values have type `T`, the canonical
+representation of its kind:
+
+| kind | `T` |
+|------|-----|
+| `:sequence` | `Int64` |
+| `:duration` | `Nanosecond` |
+| `:timestamp` | [`TimePoint`](@ref) |
+
+Accepted wherever a timeline name string
 is; carrying the representation with the name lets `set_time` / `TimeColumn` /
 `filter_range` convert and kind-check time values by dispatch, and queries
 decode the timeline's column with `eltype == T`.

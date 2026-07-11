@@ -16,12 +16,15 @@
     TimeColumn(name, values; kind=:sequence)
     TimeColumn(timeline::Timeline, values)
 
-A column of time points for `name`. `kind ∈ (:sequence, :duration, :timestamp)`
-— a [`Timeline`](@ref) supplies its own, and converts typed `values` exactly
-([`TimePoint`](@ref)/`DateTime` on timestamp timelines, `Dates.FixedPeriod` on
-duration timelines). Raw `Integer` values are nanoseconds for
-`:duration`/`:timestamp`. Length must match the component columns in the same
-`send_columns` call.
+A column of time points for `name`. `kind` is one of `:sequence`, `:duration`,
+or `:timestamp`; a [`Timeline`](@ref) supplies its own kind and converts typed
+`values` exactly:
+
+- `:timestamp` timelines: [`TimePoint`](@ref) or `DateTime`
+- `:duration` timelines: `Dates.FixedPeriod`
+
+Raw `Integer` values are nanoseconds on `:duration` and `:timestamp` timelines.
+Length must match the component columns in the same `send_columns` call.
 
 Values already in wire layout are **aliased, not copied**: `Vector{Int64}` on
 any kind, and `Vector{TimePoint}` / `Vector{Nanosecond}` matching the

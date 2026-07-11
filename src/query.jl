@@ -56,6 +56,9 @@ function Base.show(io::IO, ::MIME"text/plain", r::Recording)
 end
 Base.show(io::IO, r::Recording) = print(io, "Rerun.Recording(", repr(r.path), ")")
 
+"""
+A query over a [`Recording`](@ref): [`view`](@ref) builds it; [`filter_range`](@ref), [`fill_latest_at`](@ref), and [`set_contents!`](@ref) refine it; and [`select`](@ref) executes it.
+"""
 mutable struct RecordingView{TL<:Timeline}
     rec::Recording        # keeps the engine alive
     timeline::TL          # resolved index timeline; drives filter_range conversions
@@ -147,6 +150,10 @@ function view(rec::Recording; index::Union{AbstractString,Timeline}, contents=no
     v
 end
 
+"""
+Restrict `v` to the entities at `paths` (a collection of entity-path strings);
+an empty collection selects every entity. `view`'s `contents` keyword calls this.
+"""
 function set_contents!(v::RecordingView, paths)
     cstrs = Base.cconvert.(Cstring, String.(collect(paths)))
     GC.@preserve cstrs begin
@@ -157,10 +164,11 @@ function set_contents!(v::RecordingView, paths)
     v
 end
 
-"""Restrict rows to the inclusive index range `[lo, hi]`. Values convert per
-the view's index timeline: raw `Integer` (nanoseconds on duration/timestamp
-timelines), [`TimePoint`](@ref)/`DateTime` on timestamp timelines,
-`Dates.FixedPeriod` on duration timelines."""
+"""Restrict rows to the inclusive index range `[lo, hi]`. Values convert per the view's index timeline:
+
+- raw `Integer` — nanoseconds, on duration and timestamp timelines
+- [`TimePoint`](@ref) / `DateTime` — timestamp timelines
+- `Dates.FixedPeriod` — duration timelines"""
 filter_range(v::RecordingView, lo, hi) =
     (ccall((:rrq_query_filter_range, _LIB), Cvoid, (Ptr{Cvoid}, Int64, Int64),
            v.ptr, _time_value(v.timeline, lo), _time_value(v.timeline, hi)); v)
@@ -187,7 +195,11 @@ function _release!(b::_Batch)
     return
 end
 
-# Zero-copy column: aliases a Rust-owned buffer, holds its batch alive.
+"""
+A zero-copy query column: an `AbstractVector{T}` aliasing the Rust-owned Arrow
+buffer, valid for as long as the column holds its batch alive. `collect` it
+for an independent copy.
+"""
 struct ArrowColumn{T} <: AbstractVector{T}
     data::Vector{T}
     owner::_Batch
@@ -366,9 +378,7 @@ Run the query and eagerly collect all result batches into a Tables.jl source.
 Scalar/primitive columns (the index and other non-list columns) alias the
 underlying buffers zero-copy; list-valued component columns are decoded by copy.
 
-Zero-copy aliasing is preserved only for a single-batch result: a result split
-into several batches is concatenated into fresh columns by `Tables.columns` (and
-thus `DataFrame`), regardless of `copycols`. For guaranteed per-batch zero-copy
+Zero-copy aliasing is preserved only for a single-batch result: `Tables.columns` (and thus `DataFrame`) concatenates a multi-batch result into fresh columns, regardless of `copycols`. For guaranteed per-batch zero-copy
 over a large result, iterate `Tables.partitions` instead.
 """
 function select(v::RecordingView)

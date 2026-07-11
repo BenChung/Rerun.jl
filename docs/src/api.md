@@ -12,49 +12,107 @@ Depth = 2
 
 ## Recording streams
 
-```@autodocs
-Modules = [Rerun]
-Pages   = ["stream.jl"]
+A [`RecordingStream`](@ref) is the write handle: everything you log goes
+through one.
+
+```@docs
+RecordingStream
+Rerun.is_enabled
+Base.close(::Rerun.RecordingStream)
+Base.flush(::Rerun.RecordingStream)
+Rerun.set_global!
+Rerun.set_thread_local!
 ```
 
 ## Sinks
 
-```@autodocs
-Modules = [Rerun]
-Pages   = ["sinks.jl"]
+Sinks decide where a stream's data goes: a file, a viewer, or an in-process
+server.
+
+```@docs
+LogSink
+GrpcSink
+FileSink
+Rerun.set_sinks
+Rerun.save
+Rerun.connect_grpc
+Rerun.spawn
+Rerun.SpawnOptions
+Rerun.serve_grpc
+Rerun.to_stdout
 ```
 
-## Typed logging
+## Time & timelines
 
-```@autodocs
-Modules = [Rerun]
-Pages   = ["types.jl"]
+A [`Timeline`](@ref) names an index and its time representation; time values
+are `Int64` (sequence), `Nanosecond` (duration), or [`TimePoint`](@ref)
+(timestamp). The same types drive row logging ([`set_time`](@ref Rerun.set_time)),
+columnar logging ([`TimeColumn`](@ref)), and query results.
+
+```@docs
+Timeline
+Rerun.kind
+TimePoint
+Rerun.set_time
+Rerun.reset_time
+Rerun.disable_timeline
 ```
 
-## Columnar / temporal logging
+## Logging rows
 
-```@autodocs
-Modules = [Rerun]
-Pages   = ["columns.jl"]
+Each call logs one row — component batches or an archetype — at the stream's
+current time.
+
+```@docs
+Rerun.log
+Rerun.log_archetype
+Rerun.log_tensor
+Rerun.log_file
+Rerun.log_file_contents
 ```
 
-## Helpers
+## Logging columns
 
-```@autodocs
-Modules = [Rerun]
-Pages   = ["helpers.jl"]
+One call sends whole columns: time columns index the rows, component columns
+carry the data.
+
+```@docs
+Rerun.send_columns
+TimeColumn
 ```
 
-## Utilities & introspection
+## Querying recordings
 
-```@autodocs
-Modules = [Rerun]
-Pages   = ["util.jl", "Rerun.jl"]
+Load an `.rrd`, build a view over one of its timelines, and read the result as
+a Tables.jl source.
+
+```@docs
+Rerun.load_recording
+Rerun.Recording
+Rerun.timelines
+Rerun.timeline
+Rerun.view
+Rerun.RecordingView
+Rerun.set_contents!
+Rerun.filter_range
+Rerun.fill_latest_at
+Rerun.select
+Rerun.QueryResult
+Rerun.ArrowColumn
+```
+
+## Introspection & utilities
+
+```@docs
+Rerun.component_arrow_type
+Rerun.archetype_fields
+Rerun.version
+Rerun.escape_entity_path_part
+Rerun.video_frame_timestamps_nanos
 ```
 
 ## Errors
 
-```@autodocs
-Modules = [Rerun]
-Pages   = ["errors.jl"]
+```@docs
+RerunError
 ```

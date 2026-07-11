@@ -1,5 +1,9 @@
 # Log sinks: the `rr_log_sink` tagged union (gRPC or file) + `set_sinks`.
 
+"""
+A destination for a stream's log data, attached with [`set_sinks`](@ref):
+[`GrpcSink`](@ref) streams to a viewer, [`FileSink`](@ref) writes an `.rrd` file.
+"""
 abstract type LogSink end
 
 """Stream to a gRPC server. Scheme must be `rerun://`, `rerun+http://`, or `rerun+https://`."""

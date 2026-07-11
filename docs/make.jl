@@ -10,9 +10,12 @@ const EX_OUT = joinpath(@__DIR__, "src", "examples")
 const FEATURED = [
     ("points3d",        "Points & archetypes"),
     ("components_tour", "A tour of components"),
+    ("labels",          "Text labels & blobs"),
     ("timeseries",      "Scalar time series"),
     ("tensor",          "Tensors & heatmaps"),
+    ("live_viewer",     "Driving a live viewer"),
     ("dataframe",       "Reading data out as a DataFrame"),
+    ("blueprint_enums", "Blueprint enums (viewer configuration)"),
 ]
 
 function generate_example(name, title)
@@ -72,6 +75,7 @@ makedocs(;
     pages = [
         "Home" => "index.md",
         "Examples" => ["examples/$name.md" for (name, _) in FEATURED],
+        "Interop" => "interop.md",
         "API Reference" => "api.md",
     ],
 )

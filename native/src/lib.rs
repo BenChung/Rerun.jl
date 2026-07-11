@@ -307,9 +307,11 @@ pub extern "C" fn rrq_reader_schema(reader: *const RrqReader) -> *const FFI_Arro
     }
 }
 
-/// Writes the next batch (a struct array of columns) through `out` and returns 0.
-/// Returns 1 at end of stream, or a negative code on error. Ownership of the
-/// written array transfers to the caller (release it when done).
+/// Advances the cursor one batch. Returns:
+/// - `0` — wrote the next batch (a struct array of columns) through `out`;
+///   ownership of the array transfers to the caller (release it when done),
+/// - `1` — end of stream,
+/// - negative — error.
 #[no_mangle]
 pub extern "C" fn rrq_reader_next(
     reader: *mut RrqReader,

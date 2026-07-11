@@ -1,26 +1,7 @@
 # Rerun.jl
 
 Idiomatic Julia bindings over the [Rerun](https://rerun.io) C SDK (`rerun_c`,
-pinned to SDK 0.33.0). Rerun.jl logs multimodal data — points, meshes, images,
-tensors, scalars, transforms — to the Rerun Viewer for live or recorded
-visualization.
-
-The binding wraps the full `rerun_c` C API and implements the Arrow C Data
-Interface by hand, so logging Julia arrays is **zero-copy** on the hot paths:
-when a component's wire layout matches your data's element layout, the values
-buffer points straight into your `Vector` (kept alive until Rerun releases it).
-
-## Highlights
-
-- **Typed components & archetypes** that double as data carriers *and* dispatch
-  tags — `Position3D`, `Color`, `Points3D`, `Transform3D`, … — generated from the
-  vendored Rerun IDL. They live in the `Rerun.Components` and `Rerun.Archetypes`
-  submodules (and viewer-config enums in `Rerun.Blueprint`).
-- **Zero-copy logging** for flat components, lists/blobs, and columnar
-  (`send_columns`) data, with `missing`/validity support.
-- **Multiple sinks**: write a `.rrd` file, connect to a running viewer over
-  gRPC, spawn a viewer, serve gRPC in-process, or stream to stdout.
-- **Helpers** like [`log_tensor`](@ref Rerun.log_tensor) for N-dimensional arrays.
+pinned to SDK 0.33.0).
 
 ## Quick start
 
@@ -41,16 +22,64 @@ flush(rec)
 Open the result with `rerun out.rrd`, or swap `save` for `Rerun.spawn(rec)` to
 stream to a live viewer.
 
-See the [Examples](examples/points3d.md) for points, a components tour, scalar
-time series, and tensors; and the [API Reference](api.md) for the full surface.
+See the [Examples](examples/points3d.md) for points, a components tour, text
+labels, scalar time series, tensors, driving a live viewer, reading data back
+out as a DataFrame, and blueprint enums; and the [API Reference](api.md) for
+the full surface.
 
 ## Three logging APIs
 
-1. **Typed** — `log(rec, path, Points3D(pts; colors))` or
-   `log(rec, path, points::Vector{Position3D}, colors::Vector{Color})`. No
-   strings, fully specialized, zero-copy.
-2. **Interop** — `log(rec, path, Position3D, data::AbstractVector)` logs any
-   layout-compatible vector as a component (zero-copy when the layout matches).
-3. **String** — `log(rec, path, "rerun.components.Position3D" => pts, …)` and
-   `log_archetype(rec, path, "rerun.archetypes.Points3D"; positions = pts)` for
-   dynamic, catalog-driven use.
+Every surface feeds the same zero-copy Arrow exporter; they differ only in how
+they name the component.
+
+### Logging typed components and archetypes
+
+The generated structs in `Rerun.Components` and `Rerun.Archetypes` carry both
+the data and the component identity, so dispatch resolves everything at compile
+time and flat batches log zero-copy:
+
+```julia
+using Rerun.Components, Rerun.Archetypes
+
+Rerun.log(rec, "world/points", Points3D(pts; colors = cols))  # archetype, kwargs per field
+Rerun.log(rec, "world/points", pts, cols)                     # bare component batches
+```
+
+See [`Rerun.log`](@ref) and the [Points & archetypes](examples/points3d.md)
+example.
+
+### Logging layout-compatible vectors as components
+
+`log` takes a component type plus any layout-compatible vector and logs the
+vector *as* that component: zero-copy when the element layouts match — so
+existing data structures log without wrapping:
+
+```julia
+struct XYZ; x::Float32; y::Float32; z::Float32; end
+
+Rerun.log(rec, "cloud", Position3D, xyzs)   # 12-byte elements match Position3D's wire layout
+```
+
+The package extensions map ecosystem types (StaticArrays vectors, colorants,
+images, geometry, rotations, transforms) onto components automatically —
+[Interop](interop.md) lists each extension's mappings.
+
+### Logging by catalog name
+
+Catalog names from the Rerun IDL identify the component or archetype. Generic
+tooling uses this form, and components without a generated struct (bool and
+struct layouts) require it:
+
+```julia
+Rerun.log(rec, "world/points", "rerun.components.Position3D" => pts)
+Rerun.log_archetype(rec, "world/points", "rerun.archetypes.Points3D"; positions = pts)
+```
+
+See [`Rerun.log_archetype`](@ref), with [`Rerun.component_arrow_type`](@ref)
+and [`Rerun.archetype_fields`](@ref) for catalog introspection.
+
+### Sending columns in bulk
+
+[`Rerun.send_columns`](@ref) sends whole columns in one call, pairing
+[`Timeline`](@ref) index columns with typed or string component columns — see
+the [Scalar time series](examples/timeseries.md) example.

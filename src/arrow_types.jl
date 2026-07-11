@@ -21,22 +21,28 @@ struct ArrowAtom <: ArrowType
     tag::Symbol
 end
 
+"Variable-length UTF-8 strings."
 struct ArrowUtf8   <: ArrowType end
+"Variable-length byte strings."
 struct ArrowBinary <: ArrowType end
 
+"A list of exactly `n` `item`s per element."
 struct ArrowFixedList <: ArrowType
     item::ArrowField
     n::Int
 end
 
+"A variable-length list of `item`s."
 struct ArrowList <: ArrowType
     item::ArrowField
 end
 
+"A struct of named `fields`."
 struct ArrowStruct <: ArrowType
     fields::Vector{ArrowField}
 end
 
+"A union over `fields`, dense or sparse."
 struct ArrowUnion <: ArrowType
     fields::Vector{ArrowField}
     sparse::Bool

@@ -28,7 +28,7 @@ end
 
 Log an N-dimensional Julia array as a Rerun `Tensor`. `shape` comes from
 `size(array)` and the `TensorBuffer` union variant from `eltype(array)`
-(`Float32`→F32, `UInt8`→U8, …). Data is reordered to Rerun's row-major layout.
+(`Float32`→F32, `UInt8`→U8, …). log_tensor reorders the data to Rerun's row-major layout.
 
 ```julia
 log_tensor(rec, "heatmap", rand(Float32, 64, 64))

@@ -4,9 +4,9 @@
 #   RERUN_URL=rerun+http://192.168.0.25:9876/proxy julia --project=. examples/live_viewer.jl
 #
 # Three ways to go live:
-#   Rerun.spawn(rec)                          launch a viewer process + connect (needs `rerun` on PATH)
-#   Rerun.connect_grpc(rec, url)              connect to an already-running viewer
-#   Rerun.set_sinks(rec, GrpcSink(url=url))   attach a gRPC sink (this file)
+# - `Rerun.spawn(rec)` — launch a viewer process and connect (needs `rerun` on PATH)
+# - `Rerun.connect_grpc(rec, url)` — connect to an already-running viewer
+# - `Rerun.set_sinks(rec, GrpcSink(url=url))` — attach a gRPC sink (this file)
 
 using Rerun
 using Rerun.Components, Rerun.Archetypes
