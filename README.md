@@ -26,3 +26,5 @@ for f in 0:119
 end
 flush(rec)
 ```
+
+https://github.com/user-attachments/assets/31bb39fb-1344-4549-a5ba-24fae83ff20a
