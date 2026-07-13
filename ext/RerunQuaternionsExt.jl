@@ -22,15 +22,9 @@ import Rerun.Components: RotationQuat
 RotationQuat(q::Quaternion) =
     RotationQuat((Float32(q.v1), Float32(q.v2), Float32(q.v3), Float32(q.s)))
 
-# The reorder rules out reinterpret for every eltype, so batches always copy.
-@inline _as_rotation_batch(qs::AbstractVector{<:Quaternion}) =
-    RotationQuat[RotationQuat(q) for q in qs]
-
-# A quaternion is unambiguously a rotation, so a bare vector logs as RotationQuat.
-function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   data::AbstractVector{<:Quaternion}; inject_time::Bool=true)
-    Rerun.log(r, entity_path, RotationQuat, _as_rotation_batch(data);
-              inject_time=inject_time)
-end
+# A quaternion is unambiguously a rotation, so a bare vector logs as
+# RotationQuat. The reorder rules out zero-copy for every eltype, so batches
+# always convert through the constructor (a copy).
+Rerun.component(::Type{<:Quaternion}) = RotationQuat
 
 end # module RerunQuaternionsExt

@@ -239,6 +239,9 @@ end
 # logs use the qualified field name (e.g. "Points3D:positions"), which is a
 # distinct descriptor and therefore a distinct handle.
 const _HANDLES = Dict{String,LibRerunC.rr_component_type_handle}()
+# handle -> component-type string, so materialization can recover the generated
+# struct on paths that only carry a handle (archetype fields, catalog names).
+const _HANDLE_CTYPES = Dict{LibRerunC.rr_component_type_handle,String}()
 const _HANDLES_LOCK = ReentrantLock()
 
 function _handle(archetype::AbstractString, component::AbstractString,
@@ -258,6 +261,7 @@ function _handle(archetype::AbstractString, component::AbstractString,
                 LibRerunC.rr_component_type(desc, _take!(schema)), err))
         end
         _HANDLES[c] = h
+        _HANDLE_CTYPES[h] = ct
         return h
     finally
         unlock(_HANDLES_LOCK)
@@ -272,7 +276,7 @@ end
     _drain_exports()
     isempty(specs) && return r
     batches = map(specs) do s
-        LibRerunC.rr_component_batch(s[1], _build_component_array(s[2], s[3]))
+        LibRerunC.rr_component_batch(s[1], _build_component_array(s[2], _materialize_handle(s[1], s[3])))
     end
     try
         bref = Ref(batches)

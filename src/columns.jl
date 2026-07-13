@@ -113,8 +113,10 @@ _column(handle, t, data::AbstractVector{<:Union{Component,Missing}}) =          
     _mono_column(handle, t, _carrier_payload(data))
 _column(handle, t, data::AbstractVector{<:AbstractVector{<:Union{Component,Missing}}}) =  # typed, batch/row
     _multi_column(handle, t, [_carrier_payload(row) for row in data])
-_column(handle, t, data::AbstractVector{<:AbstractVector}) = _multi_column(handle, t, data)  # string API, batch/row
-_column(handle, t, data::AbstractVector) = _mono_column(handle, t, data)          # string API, one/row
+_column(handle, t, data::AbstractVector{<:AbstractVector}) =                       # foreign eltype, batch/row
+    _multi_column(handle, t, _is_flat(t) ? [_materialize_handle(handle, row) for row in data] : data)
+_column(handle, t, data::AbstractVector) =                                         # foreign eltype, one/row
+    _mono_column(handle, t, _is_flat(t) ? _materialize_handle(handle, data) : data)
 
 function _component_column(c::Pair)
     handle, t = _resolve_component(first(c))

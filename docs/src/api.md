@@ -101,6 +101,17 @@ Rerun.QueryResult
 Rerun.ArrowColumn
 ```
 
+## Interop (custom types)
+
+Traits that map your own element types onto components; the [Interop](interop.md)
+page shows the declarations in use.
+
+```@docs
+Rerun.component
+Rerun.wire_compatible
+Rerun.InteropError
+```
+
 ## Introspection & utilities
 
 ```@docs

@@ -26,14 +26,16 @@ end
 """
     log(rec, entity_path, Component, data::AbstractVector)
 
-Interop form: log any layout-compatible vector as the given component type, e.g.
-`log(rec, "p", Position3D, pts::Vector{Point3f})`. Zero-copy when `data`'s
-element layout matches the component's Arrow datatype.
+Interop form: log `data` as a batch of the named component. `Component`
+elements and [`Rerun.wire_compatible`](@ref) layouts pass through zero-copy;
+the `Component(::eltype)` constructor converts every other element type (a
+copy). A failing conversion throws [`Rerun.InteropError`](@ref) naming the
+declaration to add.
 """
 function log(r::RecordingStream, entity_path::AbstractString, ::Type{C},
              data::AbstractVector; inject_time::Bool=true) where {C<:Component}
     h = _component_handle(C)
-    _log_tuple(r, entity_path, ((h, arrowtype(C), data),); inject_time=inject_time)
+    _log_tuple(r, entity_path, ((h, arrowtype(C), _materialize(C, data)),); inject_time=inject_time)
 end
 
 # Wire payload of a component batch (applied in `_build_component_array`). Flat

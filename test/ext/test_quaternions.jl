@@ -31,14 +31,13 @@ using Test
         end
     end
 
-    @testset "batch helper always copies (no reinterpret view)" begin
-        ext = Base.get_extension(Rerun, :RerunQuaternionsExt)
+    @testset "batches always copy through the constructor" begin
+        @test Rerun.component(Quaternion{Float64}) === RotationQuat
+        @test !Rerun.wire_compatible(Quaternion{Float32}, RotationQuat)  # reorder rules it out
+
         qs = [Quaternion(Float64(i), i + 0.1, i + 0.2, i + 0.3) for i in 1:4]
-        batch = ext._as_rotation_batch(qs)
+        batch = Rerun._materialize(RotationQuat, qs)
         @test eltype(batch) === RotationQuat
-        # The reorder rules out a reinterpret for every eltype: the batch is
-        # always a fresh copy, never a shared-memory view.
-        @test !(batch isa Base.ReinterpretArray)
         # Element-wise reorder preserved through the batch.
         @test batch[2].quaternion ===
             (Float32(2.1), Float32(2.2), Float32(2.3), 2f0)

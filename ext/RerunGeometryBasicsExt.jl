@@ -3,10 +3,10 @@
 # convention: see RerunStaticArraysExt.jl.
 #
 # Points stay out of this file: `GeometryBasics.Point` is a `StaticVector`, so
-# RerunStaticArraysExt already owns the point mapping (including its zero-copy
-# reinterpret). This ext builds archetypes whose point fields are
-# `Vector{<:Point}` and lets that path handle layout; its own structural
-# transforms (center/half-size splits, ring closing, face reindexing) copy.
+# RerunStaticArraysExt already owns the point mapping. This ext adds the
+# zero-copy declarations for `Point{N,Float32}` and builds archetypes whose
+# point fields are `Vector{<:Point}`; its own structural transforms
+# (center/half-size splits, ring closing, face reindexing) copy.
 module RerunGeometryBasicsExt
 
 using Rerun
@@ -36,6 +36,11 @@ using Rerun.Archetypes: Boxes2D, Boxes3D, LineStrips2D, LineStrips3D, Mesh3D,
 HalfSize2D(v::GeometryBasics.Vec{2})    = HalfSize2D(_f32x2(v))
 HalfSize3D(v::GeometryBasics.Vec{3})    = HalfSize3D(_f32x3(v))
 Translation3D(p::GeometryBasics.Point{3}) = Translation3D(_f32x3(p))
+
+# Point{N,Float32} is N contiguous Float32s, so point batches (mesh vertices,
+# position fields) log zero-copy.
+Rerun.wire_compatible(::Type{GeometryBasics.Point{2,Float32}}, ::Type{Position2D}) = true
+Rerun.wire_compatible(::Type{GeometryBasics.Point{3,Float32}}, ::Type{Position3D}) = true
 
 # Rect stores origin + widths; Rerun boxes store center + half-size:
 # center = origin + widths/2, half_size = widths/2 (pinned in the test).

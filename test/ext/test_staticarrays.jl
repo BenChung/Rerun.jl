@@ -1,9 +1,13 @@
 # Exercises the RerunStaticArraysExt package extension.
 
 using Rerun
-using Rerun.Components: Position2D, Position3D, TransformMat3x3
+using Rerun.Components: Position2D, Position3D, TransformMat3x3, Vector3D
 using StaticArrays
 using Test
+
+# Zero-copy declaration for a component outside the extension's default
+# mapping (method definitions must sit at top level).
+Rerun.wire_compatible(::Type{SVector{3,Float32}}, ::Type{Vector3D}) = true
 
 @testset "RerunStaticArraysExt" begin
     @test Base.get_extension(Rerun, :RerunStaticArraysExt) !== nothing
@@ -34,33 +38,33 @@ using Test
         @test tm.matrix == (1f0, 2f0, 3f0, 4f0, 5f0, 6f0, 7f0, 8f0, 9f0)
     end
 
-    @testset "zero-copy batch reinterpret (Float32)" begin
-        v3 = [SVector{3,Float32}(i, i + 1, i + 2) for i in 1:4]
-        ext = Base.get_extension(Rerun, :RerunStaticArraysExt)
-        batch = ext._as_position_batch(Position3D, v3)
-        @test eltype(batch) === Position3D
-        # ReinterpretArray shares the parent's memory -> zero-copy view.
-        @test batch isa Base.ReinterpretArray
-        @test parent(batch) === v3
-        @test batch[1].xyz == (1f0, 2f0, 3f0)
-        @test sizeof(SVector{3,Float32}) == sizeof(Position3D)
+    @testset "traits: component mapping + wire compatibility" begin
+        @test Rerun.component(SVector{3,Float32}) === Position3D
+        @test Rerun.component(SVector{3,Float64}) === Position3D
+        @test Rerun.component(SVector{2,Float32}) === Position2D
 
-        v2 = [SVector{2,Float32}(i, -i) for i in 1:3]
-        batch2 = ext._as_position_batch(Position2D, v2)
-        @test batch2 isa Base.ReinterpretArray
-        @test batch2[2].xy == (2f0, -2f0)
+        @test Rerun.wire_compatible(SVector{3,Float32}, Position3D)
+        @test Rerun.wire_compatible(SVector{2,Float32}, Position2D)
+        @test Rerun.wire_compatible(SMatrix{3,3,Float32,9}, TransformMat3x3)
+        @test !Rerun.wire_compatible(SVector{3,Float64}, Position3D)
+        @test !Rerun.wire_compatible(MVector{3,Float32}, Position3D)
     end
 
-    @testset "convert batch (Float64 copies, not a view)" begin
-        ext = Base.get_extension(Rerun, :RerunStaticArraysExt)
-        v3 = [SVector{3,Float64}(i, i, i) for i in 1:3]
-        batch = ext._as_position_batch(Position3D, v3)
+    @testset "materialization: declared eltypes pass through, others copy" begin
+        v3 = [SVector{3,Float32}(i, i + 1, i + 2) for i in 1:4]
+        @test Rerun._materialize(Position3D, v3) === v3        # zero-copy pass-through
+
+        v2 = [SVector{2,Float32}(i, -i) for i in 1:3]
+        @test Rerun._materialize(Position2D, v2) === v2
+
+        v3d = [SVector{3,Float64}(i, i, i) for i in 1:3]
+        batch = Rerun._materialize(Position3D, v3d)            # converted copy
         @test eltype(batch) === Position3D
-        @test !(batch isa Base.ReinterpretArray)   # converted copy
+        @test batch !== v3d
         @test batch[3].xyz == (3f0, 3f0, 3f0)
     end
 
-    @testset "bare-vector log sugar defaults to positions" begin
+    @testset "bare-vector log defaults to positions" begin
         rec = RecordingStream("rerun_jl_staticarrays")
         out = tempname() * ".rrd"
         Rerun.save(rec, out)
@@ -74,9 +78,8 @@ using Test
         Rerun.log(rec, "p2", pts2)
         Rerun.log(rec, "p3d", pts3d)
 
-        # Explicit interop form logs SVectors as Vector3D through the same
-        # zero-copy base typed-batch path used for positions.
-        Rerun.log(rec, "vecs", Rerun.Components.Vector3D, pts3)
+        # Explicit form with the top-level wire_compatible declaration above.
+        Rerun.log(rec, "vecs", Vector3D, pts3)
 
         flush(rec)
         @test isfile(out) && filesize(out) > 0

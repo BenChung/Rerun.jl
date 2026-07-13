@@ -31,8 +31,10 @@ Rerun.set_time(rec, frame, 120)
 p = [Position3D((0f0,0f0,0f0)), Position3D((1f0,1f0,1f0))]
 Rerun.log(rec, "pair", p, [Color(0xff0000ff), Color(0x00ff00ff)])  # varargs of typed batches
 
-# Interop: a foreign 12-byte-isbits vector logged as Position3D, zero-copy.
+# Interop: a foreign 12-byte-isbits vector declared wire-compatible logs as
+# Position3D, zero-copy.
 struct XYZ; x::Float32; y::Float32; z::Float32; end
+Rerun.wire_compatible(::Type{XYZ}, ::Type{Position3D}) = true
 Rerun.log(rec, "foreign", Position3D, [XYZ(2f0, 0f0, 0f0), XYZ(2f0, 1f0, 0f0)])
 
 flush(rec)

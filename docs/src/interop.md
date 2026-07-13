@@ -5,9 +5,9 @@ loading the companion package activates its extension, and its types log
 directly. Every mapping routes through the interop core; [Your own types](@ref)
 shows how to attach yours to the same hooks.
 
-Zero-copy holds whenever the element layout matches the component's wire
-layout; every other mapping converts to the wire types (`Float32`, packed
-`UInt32`, …) and copies.
+Zero-copy holds where an extension declares an element type wire-compatible
+(the exact wire eltypes, e.g. `SVector{3,Float32}`); every other mapping
+converts to the wire types (`Float32`, packed `UInt32`, …) and copies.
 
 With StaticArrays and ColorTypes loaded:
 
@@ -24,9 +24,9 @@ shade = [RGB(t, 0.4, 1 - t) for t in range(0, 1; length = 200)]
 Rerun.log(rec, "helix", helix)   # StaticVector batch logs as Position3D, zero-copy
 Rerun.log(rec, "helix", shade)   # colorant batch packs into Color
 
-# The same vectors as one row through an archetype: positions reinterpret,
-# colorants convert through the Color constructor.
-Rerun.log(rec, "helix", Points3D(helix; colors = Components.Color.(shade)))
+# One archetype row from the same vectors: positions pass zero-copy,
+# colorants convert.
+Rerun.log(rec, "helix", Points3D(helix; colors = shade))
 flush(rec)
 ```
 
@@ -112,67 +112,101 @@ All three log directly and build `Transform3D` constructors.
 
 ## Your own types
 
-Custom types can be logged through one of two mechanisms depending on their
-memory layout:
+Custom types plug in through three declarations, each a single method:
 
-- **Element layout matches the component's wire layout**: log the vector
-  directly. The batch is zero-copy.
-- **Any other layout**: add a constructor method on the component. The
-  conversion copies.
+- **Any layout**: a constructor method `C(::T)` on the component. Batches
+  convert element by element. The conversion copies.
+- **Bare vectors, with no component at the call site**: a
+  [`Rerun.component`](@ref) declaration. It names the component `Vector{T}`
+  logs as and composes with either value mapping.
+- **Element layout matches the component's wire layout exactly**: a
+  [`Rerun.wire_compatible`](@ref) declaration. Batches log zero-copy.
 
-### Logging the vector directly
+A vector with no applicable declaration fails with an
+[`Rerun.InteropError`](@ref) naming the declaration that fixes it.
 
-Flat components store a numeric scalar or a fixed-size vector of numbers on
-the wire: `Position3D` is three `Float32`s, `Radius` is one `Float32`, and
-`Color` is one packed `UInt32`. Direct logging applies when your element type
-is isbits with exactly that wire layout. For example, a struct of three `Float32`
-fields lays out like `Position3D`:
+### Mapping with a constructor
 
-```julia
-struct XYZ; x::Float32; y::Float32; z::Float32; end
-```
-
-`Rerun.log(rec, path, Component, data)` reinterprets `data` as a zero-copy
-batch of `Component`. A mismatched element width throws an element-size
-mismatch error.
-
-```julia
-xyzs = [XYZ(0, 0, 0), XYZ(1, 1, 1)]
-
-Rerun.log(rec, "cloud", Position3D, xyzs)
-```
-
-### Adding a constructor method
-
-A constructor method covers every other layout. `Waypoint` stores `Float64`
-fields with latitude before longitude, so neither its width nor its field
-order matches `Position3D`:
+A constructor method covers any layout. For example, `Waypoint` stores `Float64` fields
+with latitude before longitude, so neither its width nor its field order
+matches `Position3D`:
 
 ```julia
 struct Waypoint; lat::Float64; lon::Float64; alt::Float64; end
+
+Rerun.component(::Type{Waypoint}) = Position3D
+Rerun.Components.Position3D(w::Waypoint) = Position3D((w.lon, w.lat, w.alt))
 ```
 
-Define a constructor method on the component and put the field reordering and
-conversion inside it. The bundled extensions attach through this same hook.
-Broadcast the constructor over your data to build a typed batch. The batch
-logs directly or fills any archetype field:
+The `component` declaration names the target. The constructor does the field
+reordering and conversion. The bundled extensions attach through these same
+hooks. `Waypoint` vectors then log everywhere a component batch fits:
 
 ```julia
-Rerun.Components.Position3D(w::Waypoint) = Position3D((w.lon, w.lat, w.alt))
-
 route = [Waypoint(48.86, 2.35, 35.0), Waypoint(48.85, 2.29, 32.0)]
 
-Rerun.log(rec, "route", Position3D.(route))
+Rerun.log(rec, "route", route)                                # bare vector
+Rerun.log(rec, "route", Points3D(route; radii = [0.5, 1.0]))  # archetype fields
 ```
 
-### Adding a `Rerun.log` method
+### Claiming zero-copy
 
-Bare vectors of your type can also log directly, like the extension-mapped
-types above. Add a `Rerun.log` method that forwards through either mechanism:
+When your element type is isbits with exactly the component's wire layout,
+declare it wire-compatible and batches log zero-copy. Flat components store a
+numeric scalar or a fixed-size vector of numbers on the wire: `Position3D` is
+three `Float32`s, `Radius` is one `Float32`, and `Color` is one packed
+`UInt32`. For example, a struct of three `Float32` fields lays out like
+`Position3D`:
 
 ```julia
-Rerun.log(rec::RecordingStream, path::AbstractString, route::AbstractVector{Waypoint}) =
-    Rerun.log(rec, path, Position3D.(route))
+struct XYZ; x::Float32; y::Float32; z::Float32; end
 
-Rerun.log(rec, "route", route)
+Rerun.component(::Type{XYZ}) = Position3D
+Rerun.wire_compatible(::Type{XYZ}, ::Type{Position3D}) = true
+
+Rerun.log(rec, "cloud", [XYZ(0, 0, 0), XYZ(1, 1, 1)])
 ```
+
+The two declarations compose: `component` routes the bare vector to
+`Position3D`, and `wire_compatible` passes the batch through as-is. Every log
+checks the declaration
+against the two types: a wrong width or a non-isbits element type throws an
+[`Rerun.InteropError`](@ref). The checks compile away for concrete element
+types.
+
+### Errors name the missing declaration
+
+Logging a vector with no declaration produces the recipe to add one:
+
+```
+InteropError: no component mapping for Waypoint.
+To log Vector{Waypoint}, declare its component and how to build it:
+  Rerun.component(::Type{Waypoint}) = <Component>
+  Rerun.Components.<Component>(x::Waypoint) = ...
+Or name the component at the call site: Rerun.log(rec, path, Component, data).
+```
+
+### Mapping to an archetype
+
+When a type carries more than one component's worth of data, map it to an
+archetype. Attach a `Rerun.log` method and build the archetype inside it. The
+component declarations above keep working in archetype fields, so a
+`Vector{Waypoint}` fills the positions field directly:
+
+```julia
+struct Track
+    waypoints::Vector{Waypoint}
+    color::UInt32
+end
+
+function Rerun.log(rec::RecordingStream, path::AbstractString, t::Track; inject_time::Bool = true)
+    colors = fill(Color(t.color), length(t.waypoints))
+    Rerun.log(rec, path, Points3D(t.waypoints; colors = colors); inject_time = inject_time)
+end
+
+Rerun.log(rec, "track", Track(route, 0x44aaffff))
+```
+
+The bundled extensions map composite types this way: ImageCore logs a
+`Matrix{<:Colorant}` as an `Image`, and GeometryBasics logs a `Mesh` as
+`Mesh3D`.

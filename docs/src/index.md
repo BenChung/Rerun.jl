@@ -48,21 +48,24 @@ Rerun.log(rec, "world/points", pts, cols)                     # bare component b
 See [`Rerun.log`](@ref) and the [Points & archetypes](examples/points3d.md)
 example.
 
-### Logging layout-compatible vectors as components
+### Logging your own types as components
 
-`log` takes a component type plus any layout-compatible vector and logs the
-vector *as* that component: zero-copy when the element layouts match — so
-existing data structures log without wrapping:
+Declarations map your element type onto a component: a constructor method
+converts any layout, [`Rerun.wire_compatible`](@ref) claims an exact layout
+zero-copy, and [`Rerun.component`](@ref) names the target for bare vectors.
+Declared vectors log everywhere a component batch fits:
 
 ```julia
 struct XYZ; x::Float32; y::Float32; z::Float32; end
+Rerun.wire_compatible(::Type{XYZ}, ::Type{Position3D}) = true
 
-Rerun.log(rec, "cloud", Position3D, xyzs)   # 12-byte elements match Position3D's wire layout
+Rerun.log(rec, "cloud", Position3D, xyzs)   # zero-copy
 ```
 
-The package extensions map ecosystem types (StaticArrays vectors, colorants,
-images, geometry, rotations, transforms) onto components automatically —
-[Interop](interop.md) lists each extension's mappings.
+The package extensions declare these mappings for ecosystem types
+(StaticArrays vectors, colorants, images, geometry, rotations, transforms).
+[Interop](interop.md) lists each extension's mappings and walks through
+declaring your own.
 
 ### Logging by catalog name
 

@@ -17,6 +17,7 @@ include(joinpath(@__DIR__, "cdata.jl"))       # Arrow C Data Interface export
 include(joinpath(@__DIR__, "stream.jl"))      # RecordingStream + string-based log
 include(joinpath(@__DIR__, "sinks.jl"))       # LogSink sum type + set_sinks
 include(joinpath(@__DIR__, "types.jl"))       # Component/Archetype tags + typed log
+include(joinpath(@__DIR__, "interop.jl"))     # component/wire_compatible traits + materialization
 include(joinpath(@__DIR__, "columns.jl"))     # send_columns (columnar/temporal bulk)
 include(joinpath(@__DIR__, "util.jl"))        # entity-path escaping, video timestamps
 include(joinpath(@__DIR__, "generated_types.jl"))  # generated component/archetype structs
@@ -52,6 +53,8 @@ export RecordingStream, RerunError, LogSink, GrpcSink, FileSink, TimeColumn, Tim
         # logging
         "log", "log_archetype", "log_tensor", "log_file", "log_file_contents",
         "send_columns",
+        # interop traits
+        "component", "wire_compatible", "InteropError",
         # queries
         "load_recording", "Recording", "timelines", "timeline", "view",
         "RecordingView", "set_contents!", "filter_range", "fill_latest_at",

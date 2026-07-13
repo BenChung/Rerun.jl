@@ -8,6 +8,10 @@ const POS = NTuple{3,Float32}[(0,0,0), (1,2,3), (4,5,6)]
 const COL = UInt32[0xff0000ff, 0x00ff00ff, 0x0000ffff]
 const RAD = Float32[0.1, 0.2, 0.3]
 
+# BYO interop: a foreign 12-byte isbits point type, declared wire-compatible.
+struct _P3; x::Float32; y::Float32; z::Float32; end
+Rerun.wire_compatible(::Type{_P3}, ::Type{Position3D}) = true
+
 @testset "single-component zero-copy round-trip" begin
     rec = RecordingStream("rerun_jl_test"; recording_id="rt")
     @test Rerun.is_enabled(rec)
@@ -56,8 +60,7 @@ end
     Rerun.log(rec, "b", pts, cols, rads)           # multi-component row (varargs)
     Rerun.log(rec, "c", Points3D(pts; colors=cols, radii=rads))  # archetype instance
 
-    # interop: foreign 12-byte isbits vector logged as Position3D (zero-copy, no wrapping)
-    struct _P3; x::Float32; y::Float32; z::Float32; end
+    # interop: the declared wire-compatible vector logs zero-copy, no wrapping
     Rerun.log(rec, "d", Position3D, [_P3(Float32(i), 0f0, 0f0) for i in 1:4])
 
     # enum-backed components: per-type variant namespace + wire layout
@@ -374,7 +377,6 @@ end
 @testset "validation errors (caught before the C call)" begin
     rec = RecordingStream("rerun_jl_val")
     @test_throws ErrorException Rerun.log(rec, "x", "rerun.components.DoesNotExist", Float32[1])
-    @test_throws ErrorException Rerun.log(rec, "x", "rerun.components.Radius", Float64[1.0])  # size mismatch
 end
 
 @testset "close is eager and idempotent" begin

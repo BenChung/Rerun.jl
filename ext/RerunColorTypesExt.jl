@@ -59,11 +59,8 @@ end
 @inline _pack(r::UInt8, g::UInt8, b::UInt8, a::UInt8)::UInt32 =
     (UInt32(r) << 24) | (UInt32(g) << 16) | (UInt32(b) << 8) | UInt32(a)
 
-# A colorant batch copies into a fresh Vector{Color}.
-function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   data::AbstractVector{<:Colorant}; inject_time::Bool=true)
-    colors = Color[Color(c) for c in data]
-    Rerun.log(r, entity_path, colors; inject_time=inject_time)
-end
+# A colorant batch logs as Color through the constructors above (always a
+# copy: no colorant layout matches the packed UInt32).
+Rerun.component(::Type{<:Colorant}) = Color
 
 end # module RerunColorTypesExt

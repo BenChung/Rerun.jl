@@ -48,13 +48,13 @@ using Test
     end
 
     @testset "batch log path (copies into Vector{Color})" begin
-        ext = Base.get_extension(Rerun, :RerunColorTypesExt)
-        @test ext !== nothing
+        @test Rerun.component(RGBA{N0f8}) === Color
+        @test Rerun.component(Gray{Float64}) === Color
 
         # Colorants always copy into a fresh Vector{Color}: the channel reorder
         # and scaling rule out a zero-copy reinterpret.
         cs = [RGBA{N0f8}(1, 0, 0, 1), RGBA{N0f8}(0, 1, 0, 1), RGBA{N0f8}(0, 0, 1, 1)]
-        converted = Color[Color(c) for c in cs]
+        converted = Rerun._materialize(Color, cs)
         @test converted == Color[Color(0xff0000ff), Color(0x00ff00ff), Color(0x0000ffff)]
         @test eltype(converted) === Color
 
