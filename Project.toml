@@ -1,6 +1,6 @@
 name = "Rerun"
 uuid = "1f49d09d-ceb1-46d4-a7f5-ca2a56fa37fd"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Benjamin Chung <ckfinite@gmail.com>"]
 
 [deps]
