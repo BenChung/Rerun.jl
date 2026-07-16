@@ -123,6 +123,28 @@ function _component_column(c::Pair)
     return _column(handle, t, last(c))
 end
 
+# (handle, ArrowType, data) spec — the form `columns` / `_arch_field_spec` emit.
+_component_column(spec::Tuple) = _column(spec[1], spec[2], spec[3])
+
+"""
+    columns(A::Type{<:Archetype}; field=data, ...)
+
+Archetype-tagged column specs for [`send_columns`](@ref). Each keyword names a
+field of `A` and supplies its column; the spec carries the archetype-qualified
+descriptor (e.g. `Scalars:scalars`), which the viewer keys visualizer selection
+on — bare `Component => data` columns appear in the dataframe but get no
+visualizer by default. Data shapes match the pair form: a flat vector is one
+instance per row, a vector of vectors a batch per row.
+
+    send_columns(rec, "metrics/sin",
+        (Timeline("step") => steps,),
+        Rerun.columns(Scalars; scalars=sin.(steps .* 0.1)))
+"""
+function columns(::Type{A}; fields...) where {A<:Archetype}
+    isempty(fields) && error("columns: no fields given for $(archetypename(A))")
+    return _arch_specs(A, values(fields))
+end
+
 """
     send_columns(rec, entity_path, timelines::Tuple, columns::Tuple)
     send_columns(rec, entity_path, timelines, columns)
@@ -133,6 +155,14 @@ index; all column lengths must match). Example:
     send_columns(rec, "world/points",
         (Timeline("frame") => 0:99,),              # or "frame" => 0:99, or TimeColumn(...)
         (Position3D => batches,))                  # batches::Vector{Vector{Position3D}}, or a flat Vector for 1/row
+
+`Component => data` pairs log bare components; [`columns`](@ref) builds
+archetype-tagged specs instead, which the viewer needs to select visualizers
+automatically:
+
+    send_columns(rec, "metrics/sin",
+        ("step" => steps,),
+        Rerun.columns(Scalars; scalars=sin.(steps)))
 
 The tuple form keeps every pair's type concrete: component handles, Arrow
 types, and time-value conversions resolve statically, and the per-call C

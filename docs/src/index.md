@@ -84,5 +84,7 @@ and [`Rerun.archetype_fields`](@ref) for catalog introspection.
 ### Sending columns in bulk
 
 [`Rerun.send_columns`](@ref) sends whole columns in one call, pairing
-[`Timeline`](@ref) index columns with typed or string component columns — see
+[`Timeline`](@ref) index columns with typed or string component columns.
+[`Rerun.columns`](@ref) tags the component columns with an archetype (e.g.
+`Scalars`), so the viewer plots them without manual blueprint setup — see
 the [Scalar time series](examples/timeseries.md) example.

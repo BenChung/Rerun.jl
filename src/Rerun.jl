@@ -52,7 +52,7 @@ export RecordingStream, RerunError, LogSink, GrpcSink, FileSink, TimeColumn, Tim
         "set_time", "reset_time", "disable_timeline", "kind",
         # logging
         "log", "log_archetype", "log_tensor", "log_file", "log_file_contents",
-        "send_columns",
+        "send_columns", "columns",
         # interop traits
         "component", "wire_compatible", "InteropError",
         # queries

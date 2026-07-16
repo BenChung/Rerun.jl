@@ -141,6 +141,14 @@ end
     Rerun.send_columns(rec, "traj_t", (Timeline("frame") => 0:49,), (Position3D => pts,))
     Rerun.send_columns(rec, "pc_t", ("frame" => 0:49,),
         (Position3D => pts, Color => [Color(0xff00ffff) for _ in 1:50]))
+    # archetype-tagged columns: descriptors carry e.g. Scalars:scalars, so the
+    # viewer selects visualizers automatically
+    Rerun.send_columns(rec, "sine", ("frame" => 0:9,),
+        Rerun.columns(Scalars; scalars=sin.(0:9)))
+    Rerun.send_columns(rec, "traj_a", ["frame" => 0:49],   # iterable form + two tagged fields
+        Rerun.columns(Points3D; positions=pts, colors=[Color(0xff00ffff) for _ in 1:50]))
+    @test_throws ErrorException Rerun.columns(Scalars; not_a_field=sin.(0:9))
+    @test_throws ErrorException Rerun.columns(Scalars)
     flush(rec)
     @test isfile(out) && filesize(out) > 0
 

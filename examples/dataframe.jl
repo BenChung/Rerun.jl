@@ -10,7 +10,7 @@
 
 using Rerun
 using Dates
-import Rerun.Components: Scalar
+import Rerun.Archetypes: Scalars
 using DataFrames
 
 # A small recording to query back: one scalar series indexed by an integer
@@ -24,7 +24,7 @@ steps = collect(0:99)
 t0 = TimePoint(DateTime(2026, 7, 10))
 Rerun.send_columns(rec, "metrics/sin",
     (step => steps, Rerun.TimeColumn(wall, t0 .+ Millisecond.(steps))),
-    (Scalar => sin.(steps .* 0.1),))
+    Rerun.columns(Scalars; scalars=sin.(steps .* 0.1)))
 flush(rec)
 
 # The recording is the authority on its timelines: look them up as concrete,

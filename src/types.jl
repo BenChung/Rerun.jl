@@ -94,6 +94,13 @@ end
 function archetypename end       # ::Type{<:Archetype} -> String
 function _arch_field_spec end     # (::Type{<:Archetype}, ::Val{field}, data) -> (handle, arrowtype, data)
 
+# Unknown-field catch-all (the generated per-field methods are more specific).
+function _arch_field_spec(::Type{A}, ::Val{F}, _) where {A<:Archetype,F}
+    an = archetypename(A)
+    fields = [f.field for f in get(ARCHETYPES, an, ArchetypeField[])]
+    error("archetype $an has no field `$F` (fields: $(join(fields, ", ")))")
+end
+
 # Register-once / read the per-(archetype,field) handle cache.
 @inline function _cached_arch_handle(ref::Base.RefValue, arch, comp, ctype, t)
     h = ref[]

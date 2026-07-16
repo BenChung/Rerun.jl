@@ -83,6 +83,23 @@ end
         @test occursin("Recording(", sprint(show, rec)) # compact form
     end
 
+    @testset "archetype-tagged columns keep their descriptor" begin
+        rect = RecordingStream("rrq_tagged_test")
+        outt = tempname() * ".rrd"
+        Rerun.save(rect, outt)
+        steps = collect(0:9)
+        Rerun.send_columns(rect, "m/sin", ["step" => steps],
+            Rerun.columns(Rerun.Archetypes.Scalars; scalars=Float64.(steps)))
+        flush(rect)
+        sleep(0.2)
+
+        rec2 = Rerun.load_recording(outt)
+        cols = Tables.columns(Rerun.select(Rerun.view(rec2; index="step")))
+        nm = _colnamed(cols, "Scalars:scalars")     # archetype-qualified descriptor survives
+        vals = Tables.getcolumn(cols, nm)
+        @test [only(v) for v in vals] == Float64.(steps)
+    end
+
     @testset "timestamp timeline: introspection + ns-exact roundtrip" begin
         rect = RecordingStream("rrq_ts_test")
         outt = tempname() * ".rrd"

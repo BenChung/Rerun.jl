@@ -74,10 +74,12 @@ Rerun.log_file_contents
 ## Logging columns
 
 One call sends whole columns: time columns index the rows, component columns
-carry the data.
+carry the data. [`Rerun.columns`](@ref) tags the component columns with an
+archetype so the viewer selects visualizers automatically.
 
 ```@docs
 Rerun.send_columns
+Rerun.columns
 TimeColumn
 ```
 
