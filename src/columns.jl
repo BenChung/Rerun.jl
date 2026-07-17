@@ -181,23 +181,33 @@ function send_columns(r::RecordingStream, entity_path::AbstractString, timelines
     local ccols
     try
         ccols = map(_component_column, columns)
-        tref = Ref(tcols); cref = Ref(ccols)
-        GC.@preserve tcs tref cref begin
-            pt = isempty(tcols) ? Ptr{LibRerunC.rr_time_column}(C_NULL) :
-                 Ptr{LibRerunC.rr_time_column}(Base.unsafe_convert(Ptr{typeof(tcols)}, tref))
-            pc = isempty(ccols) ? Ptr{LibRerunC.rr_component_column}(C_NULL) :
-                 Ptr{LibRerunC.rr_component_column}(Base.unsafe_convert(Ptr{typeof(ccols)}, cref))
-            checked(err -> LibRerunC.rr_recording_stream_send_columns(
-                r.handle, entity_path,
-                pt, UInt32(length(tcols)),
-                pc, UInt32(length(ccols)), err))
-        end
     catch
-        # Build/send failed -> rerun never took ownership, so release the built
-        # column arrays ourselves (free C bookkeeping, unpin zero-copy roots).
+        # Component build failed -> nothing was handed to rerun yet; the time
+        # columns' structs are untouched, so release them all.
         for tc in tcols; _release_unpublished(tc.array); end
-        @isdefined(ccols) && for cc in ccols; _release_unpublished(cc.array); end
         rethrow()
+    end
+    tref = Ref(tcols); cref = Ref(ccols)
+    GC.@preserve tcs tref cref begin
+        pt = isempty(tcols) ? Ptr{LibRerunC.rr_time_column}(C_NULL) :
+             Ptr{LibRerunC.rr_time_column}(Base.unsafe_convert(Ptr{typeof(tcols)}, tref))
+        pc = isempty(ccols) ? Ptr{LibRerunC.rr_component_column}(C_NULL) :
+             Ptr{LibRerunC.rr_component_column}(Base.unsafe_convert(Ptr{typeof(ccols)}, cref))
+        e = _checked_err(err -> LibRerunC.rr_recording_stream_send_columns(
+            r.handle, entity_path,
+            pt, UInt32(length(tcols)),
+            pc, UInt32(length(ccols)), err))
+        if e !== nothing
+            # rerun consumes arrays even when the send fails, nulling `release`
+            # in the structs it was handed. Read those back through the raw
+            # pointers — the pre-call tuples are stale copies — so
+            # `_release_unpublished` frees only what rerun left behind. A
+            # `catch` here instead would block elision of the Refs (see
+            # `_checked_err`).
+            for i in 1:length(tcols); _release_unpublished(unsafe_load(pt, i).array); end
+            for i in 1:length(ccols); _release_unpublished(unsafe_load(pc, i).array); end
+            throw(e)
+        end
     end
     return r
 end
@@ -216,8 +226,9 @@ function send_columns(r::RecordingStream, entity_path::AbstractString, timelines
                 pointer(ccols), UInt32(length(ccols)), err))
         end
     catch
-        # Build/send failed -> rerun never took ownership, so release the built
-        # column arrays ourselves (free C bookkeeping, unpin zero-copy roots).
+        # rerun nulls `release` in place on every array it consumed (it may
+        # consume even when the send fails), so this frees only what it left
+        # behind: C bookkeeping and zero-copy root pins of unconsumed columns.
         for tc in tcols; _release_unpublished(tc.array); end
         @isdefined(ccols) && for cc in ccols; _release_unpublished(cc.array); end
         rethrow()

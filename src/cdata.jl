@@ -160,12 +160,14 @@ function _drain_exports()
 end
 
 # Release a built-but-unpublished array — used when a log/send_columns call fails
-# before rerun takes ownership (otherwise the malloc'd bookkeeping leaks and, for
-# the zero-copy path, the GC root is pinned forever because the release callback
-# that flips its flag never fires). Invoking the array's own release callback does
-# exactly the right cleanup for both kinds (zero-copy: free bookkeeping + flip flag
-# so the next _drain_exports drops the root; owned: free the data buffers too).
-# On the error path rerun did not consume the array, so this is not a double-free.
+# and rerun left the array unconsumed (otherwise the malloc'd bookkeeping leaks
+# and, for the zero-copy path, the GC root is pinned forever because the release
+# callback that flips its flag never fires). Invoking the array's own release
+# callback does exactly the right cleanup for both kinds (zero-copy: free
+# bookkeeping + flip flag so the next _drain_exports drops the root; owned: free
+# the data buffers too). rerun may consume arrays even on a failed call, nulling
+# `release` in the struct it was handed — callers must pass that post-call
+# struct, not a pre-call copy, so the guard below skips consumed arrays.
 function _release_unpublished(a::LibRerunC.ArrowArray)
     a.release == C_NULL && return
     ref = Ref(a)

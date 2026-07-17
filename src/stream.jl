@@ -278,20 +278,22 @@ end
     batches = map(specs) do s
         LibRerunC.rr_component_batch(s[1], _build_component_array(s[2], _materialize_handle(s[1], s[3])))
     end
-    try
-        bref = Ref(batches)
-        ep = String(entity_path)
-        GC.@preserve bref ep begin
-            pb = Ptr{LibRerunC.rr_component_batch}(Base.unsafe_convert(Ptr{typeof(batches)}, bref))
-            row = LibRerunC.rr_data_row(_rrstr(ep), UInt32(length(specs)), pb)
-            checked(err -> LibRerunC.rr_recording_stream_log(r.handle, row, inject_time, err))
+    bref = Ref(batches)
+    ep = String(entity_path)
+    GC.@preserve bref ep begin
+        pb = Ptr{LibRerunC.rr_component_batch}(Base.unsafe_convert(Ptr{typeof(batches)}, bref))
+        row = LibRerunC.rr_data_row(_rrstr(ep), UInt32(length(specs)), pb)
+        e = _checked_err(err -> LibRerunC.rr_recording_stream_log(r.handle, row, inject_time, err))
+        if e !== nothing
+            # rerun may consume arrays even when the log fails, nulling `release`
+            # in the structs it was handed. Read those back through `pb` — the
+            # pre-call `batches` tuple is a stale copy — so `_release_unpublished`
+            # frees only what rerun left behind.
+            for i in 1:length(batches)
+                _release_unpublished(unsafe_load(pb, i).array)
+            end
+            throw(e)
         end
-    catch
-        # The log failed -> rerun never took ownership, so its release callback will
-        # never fire. Release the built arrays ourselves to free C bookkeeping and
-        # unpin the zero-copy GC roots.
-        for b in batches; _release_unpublished(b.array); end
-        rethrow()
     end
     return r
 end

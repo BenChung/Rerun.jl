@@ -50,6 +50,22 @@ function checked(f)
     end
 end
 
+# Non-throwing `checked` for void calls: returns the `RerunError` (or `nothing`)
+# instead of throwing, so callers can run cleanup on the cold path without a
+# `catch` handler — a handler inside a `GC.@preserve` region blocks allocation
+# elision of the preserved `Ref`s, heap-allocating the hot path.
+function _checked_err(f)::Union{Nothing,RerunError}
+    err = Ref{LibRerunC.rr_error}()
+    GC.@preserve err begin
+        p = Base.unsafe_convert(Ptr{LibRerunC.rr_error}, err)
+        unsafe_store!(Ptr{UInt32}(p), UInt32(0))          # code = RR_ERROR_CODE_OK
+        f(p)
+        code = unsafe_load(Ptr{UInt32}(p))
+        code == 0 && return nothing
+        return RerunError(code, _error_message(unsafe_load(p)))
+    end
+end
+
 function _error_code_name(code::Integer)
     for n in names(LibRerunC; all=true)
         s = string(n)
