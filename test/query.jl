@@ -137,4 +137,28 @@ end
         v = Rerun.filter_range(Rerun.view(rec2; index=tl), TimePoint(ns[3]), TimePoint(ns[5]))
         @test length(Tables.getcolumn(Tables.columns(Rerun.select(v)), :time)) == 3
     end
+
+    @testset "static logging: static=true is the inverse of inject_time" begin
+        rect = RecordingStream("rrq_static_test")
+        outt = tempname() * ".rrd"
+        Rerun.save(rect, outt)
+        Rerun.set_time(rect, "step", 3)
+        Rerun.log(rect, "s/timed", "rerun.components.Scalar", [1.0])
+        Rerun.set_time(rect, "step", 7)                     # ignored: static rows carry no time
+        Rerun.log(rect, "s/static", "rerun.components.Scalar", [42.0]; static=true)
+        Rerun.log(rect, "s/typed", [Rerun.Components.Scalar(7.0)]; static=true)       # typed batch
+        Rerun.log(rect, "s/arch", Rerun.Archetypes.Scalars([8.0]); static=true)       # typed archetype
+        Rerun.log_archetype(rect, "s/named", "rerun.archetypes.Scalars"; scalars=[9.0], static=true)
+        Rerun.set_time(rect, "step", 5)
+        Rerun.log(rect, "s/timed", "rerun.components.Scalar", [2.0]; static=true, inject_time=true)  # explicit inject_time wins
+        flush(rect)
+        sleep(0.2)
+
+        rec2 = Rerun.load_recording(outt)
+        cols = Tables.columns(Rerun.select(Rerun.fill_latest_at(Rerun.view(rec2; index="step"))))
+        step = Tables.getcolumn(cols, :step)
+        @test collect(step) == [3, 5]                       # no row at 7: static rows create no index entries
+        sv = Tables.getcolumn(cols, _colnamed(cols, "s/static"))
+        @test all(v -> v == [42.0], sv)                     # static value visible at every index
+    end
 end

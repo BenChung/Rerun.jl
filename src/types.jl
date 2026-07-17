@@ -33,7 +33,8 @@ copy). A failing conversion throws [`Rerun.InteropError`](@ref) naming the
 declaration to add.
 """
 function log(r::RecordingStream, entity_path::AbstractString, ::Type{C},
-             data::AbstractVector; inject_time::Bool=true) where {C<:Component}
+             data::AbstractVector; static::Bool=false,
+             inject_time::Bool=!static) where {C<:Component}
     h = _component_handle(C)
     _log_tuple(r, entity_path, ((h, arrowtype(C), _materialize(C, data)),); inject_time=inject_time)
 end
@@ -73,13 +74,15 @@ for _N in 1:8
     bs   = [Symbol(:b, i) for i in 1:_N]
     sigs = [:($(b)::AbstractVector{<:Union{Component,Missing}}) for b in bs]
     spcs = [:(_component_spec($(b))) for b in bs]
-    @eval function log(r::RecordingStream, entity_path::AbstractString, $(sigs...); inject_time::Bool=true)
+    @eval function log(r::RecordingStream, entity_path::AbstractString, $(sigs...);
+                       static::Bool=false, inject_time::Bool=!static)
         _log_tuple(r, entity_path, ($(spcs...),); inject_time=inject_time)
     end
 end
 
 function log(r::RecordingStream, entity_path::AbstractString,
-             batches::AbstractVector{<:Union{Component,Missing}}...; inject_time::Bool=true)
+             batches::AbstractVector{<:Union{Component,Missing}}...;
+             static::Bool=false, inject_time::Bool=!static)
     isempty(batches) && throw(ArgumentError("log: provide at least one component batch"))
     _log_tuple(r, entity_path, _component_specs(batches); inject_time=inject_time)
 end
@@ -130,7 +133,8 @@ Log a materialized archetype as one row, e.g. `log(rec, "p", Points3D(pts; color
 Each set field is logged under its archetype-qualified descriptor; the build is
 type-stable and 0-alloc (the only cost is constructing the archetype itself).
 """
-function log(r::RecordingStream, entity_path::AbstractString, a::A; inject_time::Bool=true) where {A<:Archetype}
+function log(r::RecordingStream, entity_path::AbstractString, a::A;
+             static::Bool=false, inject_time::Bool=!static) where {A<:Archetype}
     specs = _arch_specs(A, a.fields)
     isempty(specs) && error("$(archetypename(A)): no fields set")
     _log_tuple(r, entity_path, specs; inject_time=inject_time)

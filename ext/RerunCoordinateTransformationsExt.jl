@@ -80,7 +80,8 @@ end
 const _SupportedTransform = Union{Translation, LinearMap, AffineMap}
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   transform::_SupportedTransform; inject_time::Bool=true)
+                   transform::_SupportedTransform; static::Bool=false,
+                   inject_time::Bool=!static)
     Rerun.log(r, entity_path, Rerun.Archetypes.Transform3D(transform);
               inject_time=inject_time)
 end

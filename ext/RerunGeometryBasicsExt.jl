@@ -46,23 +46,23 @@ Rerun.wire_compatible(::Type{GeometryBasics.Point{3,Float32}}, ::Type{Position3D
 # center = origin + widths/2, half_size = widths/2 (pinned in the test).
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   rect::GeometryBasics.Rect{3}; inject_time::Bool=true)
+                   rect::GeometryBasics.Rect{3}; static::Bool=false, inject_time::Bool=!static)
     Rerun.log(r, entity_path, _boxes3d([rect]); inject_time=inject_time)
 end
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   rect::GeometryBasics.Rect{2}; inject_time::Bool=true)
+                   rect::GeometryBasics.Rect{2}; static::Bool=false, inject_time::Bool=!static)
     Rerun.log(r, entity_path, _boxes2d([rect]); inject_time=inject_time)
 end
 
 # Vectors of rects -> a single Boxes archetype (one row, many boxes).
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   rects::AbstractVector{<:GeometryBasics.Rect{3}}; inject_time::Bool=true)
+                   rects::AbstractVector{<:GeometryBasics.Rect{3}}; static::Bool=false, inject_time::Bool=!static)
     Rerun.log(r, entity_path, _boxes3d(rects); inject_time=inject_time)
 end
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   rects::AbstractVector{<:GeometryBasics.Rect{2}}; inject_time::Bool=true)
+                   rects::AbstractVector{<:GeometryBasics.Rect{2}}; static::Bool=false, inject_time::Bool=!static)
     Rerun.log(r, entity_path, _boxes2d(rects); inject_time=inject_time)
 end
 
@@ -92,14 +92,14 @@ _strip2d(pts) = LineStrip2D(NTuple{2,Float32}[_f32x2(p) for p in pts])
 _is3d(pts) = !isempty(pts) && length(first(pts)) == 3
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   ls::GeometryBasics.LineString; inject_time::Bool=true)
+                   ls::GeometryBasics.LineString; static::Bool=false, inject_time::Bool=!static)
     pts = _points(ls)
     arch = _is3d(pts) ? LineStrips3D([_strip3d(pts)]) : LineStrips2D([_strip2d(pts)])
     Rerun.log(r, entity_path, arch; inject_time=inject_time)
 end
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   poly::GeometryBasics.Polygon; inject_time::Bool=true)
+                   poly::GeometryBasics.Polygon; static::Bool=false, inject_time::Bool=!static)
     pts = _points(poly)
     if !isempty(pts) && first(pts) != last(pts)
         pts = vcat(pts, [first(pts)])
@@ -144,13 +144,13 @@ function _mesh_normals(mesh::GeometryBasics.Mesh)
 end
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   mesh::GeometryBasics.Mesh; inject_time::Bool=true)
+                   mesh::GeometryBasics.Mesh; static::Bool=false, inject_time::Bool=!static)
     Rerun.log(r, entity_path, _mesh3d(mesh); inject_time=inject_time)
 end
 
 # A single triangle becomes a 1-triangle Mesh3D with face (0,1,2).
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   tri::GeometryBasics.Ngon{Dim,T,3}; inject_time::Bool=true) where {Dim,T}
+                   tri::GeometryBasics.Ngon{Dim,T,3}; static::Bool=false, inject_time::Bool=!static) where {Dim,T}
     pts   = GeometryBasics.coordinates(tri)
     verts = GeometryBasics.Point3f[GeometryBasics.Point3f(_pt3(p)) for p in pts]
     Rerun.log(r, entity_path,
@@ -165,12 +165,12 @@ end
 # Sphere -> Ellipsoids3D with half_size (r,r,r).
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   s::GeometryBasics.HyperSphere{3}; inject_time::Bool=true)
+                   s::GeometryBasics.HyperSphere{3}; static::Bool=false, inject_time::Bool=!static)
     Rerun.log(r, entity_path, _ellipsoids([s]); inject_time=inject_time)
 end
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   spheres::AbstractVector{<:GeometryBasics.HyperSphere{3}}; inject_time::Bool=true)
+                   spheres::AbstractVector{<:GeometryBasics.HyperSphere{3}}; static::Bool=false, inject_time::Bool=!static)
     Rerun.log(r, entity_path, _ellipsoids(spheres); inject_time=inject_time)
 end
 

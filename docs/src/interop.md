@@ -93,7 +93,8 @@ struct Track
     color::UInt32
 end
 
-function Rerun.log(rec::RecordingStream, path::AbstractString, t::Track; inject_time::Bool = true)
+function Rerun.log(rec::RecordingStream, path::AbstractString, t::Track;
+                   static::Bool = false, inject_time::Bool = !static)
     colors = fill(Color(t.color), length(t.waypoints))
     Rerun.log(rec, path, Points3D(t.waypoints; colors = colors); inject_time = inject_time)
 end

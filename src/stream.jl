@@ -303,27 +303,33 @@ _lookup_component(ct) = get(COMPONENT_TYPES, ct) do
 end
 
 """
-    log(rec, entity_path, component_type, data::AbstractVector; inject_time=true)
+    log(rec, entity_path, component_type, data::AbstractVector; static=false)
 
 Zero-copy log a single component batch. `data`'s element layout must match the
 component's Arrow datatype (e.g. `Vector{NTuple{3,Float32}}` for
 `"rerun.components.Position3D"`). `data` is kept alive until rerun releases it.
+
+`static=true` logs the row as static data: no time stamps, visible at every
+time. `inject_time` is its inverse (matching rerun_c) and takes precedence
+when passed explicitly. Every `log`/`log_archetype` method accepts both.
 """
 function log(r::RecordingStream, entity_path::AbstractString,
-             component_type::AbstractString, data::AbstractVector; inject_time::Bool=true)
+             component_type::AbstractString, data::AbstractVector;
+             static::Bool=false, inject_time::Bool=!static)
     t = _lookup_component(component_type)
     h = _handle("", component_type, component_type, t)
     _log_tuple(r, entity_path, ((h, t, data),); inject_time=inject_time)
 end
 
 """
-    log(rec, entity_path, component_type => data, ...; inject_time=true)
+    log(rec, entity_path, component_type => data, ...; static=false)
 
 Log several component batches as a single row, e.g.
 `log(rec, "world/points", "rerun.components.Position3D"=>pts, "rerun.components.Color"=>cols)`.
 """
 function log(r::RecordingStream, entity_path::AbstractString,
-             batches::Pair{<:AbstractString,<:AbstractVector}...; inject_time::Bool=true)
+             batches::Pair{<:AbstractString,<:AbstractVector}...;
+             static::Bool=false, inject_time::Bool=!static)
     specs = map(batches) do (ct, data)
         t = _lookup_component(ct)
         (_handle("", ct, ct, t), t, data)
@@ -340,15 +346,18 @@ function _archetype_field(afields, name::Symbol, archetype)
 end
 
 """
-    log_archetype(rec, entity_path, archetype; field=data, ...; inject_time=true)
+    log_archetype(rec, entity_path, archetype; field=data, ..., static=false)
 
 Log an archetype as one row, e.g.
 `log_archetype(rec, "world/points", "rerun.archetypes.Points3D"; positions=pts, colors=cols, radii=rad)`.
 Each keyword names an archetype field; its component type and archetype-qualified
 descriptor (e.g. `Points3D:positions`) are resolved from the generated catalog.
+`static` and `inject_time` are reserved keywords (see [`log`](@ref)); every
+other keyword is an archetype field.
 """
 function log_archetype(r::RecordingStream, entity_path::AbstractString,
-                       archetype::AbstractString; inject_time::Bool=true, fields...)
+                       archetype::AbstractString; static::Bool=false,
+                       inject_time::Bool=!static, fields...)
     afields = get(ARCHETYPES, archetype) do
         error("unknown archetype $archetype (not in generated catalog)")
     end

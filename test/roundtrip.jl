@@ -149,6 +149,17 @@ end
         Rerun.columns(Points3D; positions=pts, colors=[Color(0xff00ffff) for _ in 1:50]))
     @test_throws ErrorException Rerun.columns(Scalars; not_a_field=sin.(0:9))
     @test_throws ErrorException Rerun.columns(Scalars)
+    # C-side chunk validation failure (row-count mismatch) surfaces as a
+    # RerunError without double-freeing: rerun consumes the arrays even on a
+    # failed send, and the catch must respect the in-place `release` marks.
+    @test_throws RerunError Rerun.send_columns(rec, "bad",
+        ("frame" => 0:9,), (Scalar => Float64.(0:4),))                # tuple form
+    @test_throws RerunError Rerun.send_columns(rec, "bad",
+        ["frame" => 0:9], ["rerun.components.Scalar" => Float64.(0:4)])  # vector form
+    @test_throws RerunError Rerun.send_columns(rec, "bad",
+        ("frame" => 0:9,), Rerun.columns(Scalars; scalars=Float64.(0:4)))
+    GC.gc()
+    Rerun.send_columns(rec, "traj", ["frame" => 1000:1049], [Position3D => pts])  # stream still usable
     flush(rec)
     @test isfile(out) && filesize(out) > 0
 

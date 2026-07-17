@@ -138,7 +138,7 @@ A [`Rerun.wire_compatible`](@ref) declaration logs the batch zero-copy; the
 component's constructor converts every other element type (a copy).
 """
 function log(r::RecordingStream, entity_path::AbstractString, data::AbstractVector;
-             inject_time::Bool=true)
+             static::Bool=false, inject_time::Bool=!static)
     T = Base.nonmissingtype(eltype(data))
     C = component(T)
     C === nothing && throw(InteropError(

@@ -55,7 +55,7 @@ _strip2(pts) = NTuple{2,Float32}[_coords2(p) for p in pts]
 # A bare vector of points logs as positions; 2D vs 3D from the embedding dimension.
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   pts::AbstractVector{<:Meshes.Point}; inject_time::Bool=true)
+                   pts::AbstractVector{<:Meshes.Point}; static::Bool=false, inject_time::Bool=!static)
     isempty(pts) && throw(ArgumentError("log: empty Meshes.Point vector"))
     if Meshes.embeddim(first(pts)) == 2
         Rerun.log(r, entity_path, Position2D, _positions2(pts); inject_time=inject_time)
@@ -66,7 +66,7 @@ end
 
 # Single point -> one-element position batch.
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   p::Meshes.Point; inject_time::Bool=true)
+                   p::Meshes.Point; static::Bool=false, inject_time::Bool=!static)
     Rerun.log(r, entity_path, [p]; inject_time=inject_time)
 end
 
@@ -100,15 +100,15 @@ function _log_one_strip(r, entity_path, g; close::Bool, inject_time::Bool)
 end
 
 Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, g::Meshes.Segment;
-          inject_time::Bool=true) =
+          static::Bool=false, inject_time::Bool=!static) =
     _log_one_strip(r, entity_path, g; close=false, inject_time=inject_time)
 
 Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, g::Meshes.Rope;
-          inject_time::Bool=true) =
+          static::Bool=false, inject_time::Bool=!static) =
     _log_one_strip(r, entity_path, g; close=false, inject_time=inject_time)
 
 Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, g::Meshes.Ring;
-          inject_time::Bool=true) =
+          static::Bool=false, inject_time::Bool=!static) =
     _log_one_strip(r, entity_path, g; close=true, inject_time=inject_time)
 
 # A single polygon fan-triangulates from vertex 0: (0,1,2),(0,2,3),... —
@@ -130,11 +130,11 @@ function _polygon_mesh(g)
 end
 
 Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, g::Meshes.Triangle;
-          inject_time::Bool=true) =
+          static::Bool=false, inject_time::Bool=!static) =
     Rerun.log(r, entity_path, _polygon_mesh(g); inject_time=inject_time)
 
 Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, g::Meshes.Ngon;
-          inject_time::Bool=true) =
+          static::Bool=false, inject_time::Bool=!static) =
     Rerun.log(r, entity_path, _polygon_mesh(g); inject_time=inject_time)
 
 # SimpleMesh -> Mesh3D. The trap: Meshes vertex indices are 1-based, Rerun's
@@ -166,7 +166,7 @@ function _simplemesh_mesh3d(m::Meshes.SimpleMesh)
 end
 
 Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, m::Meshes.SimpleMesh;
-          inject_time::Bool=true) =
+          static::Bool=false, inject_time::Bool=!static) =
     Rerun.log(r, entity_path, _simplemesh_mesh3d(m); inject_time=inject_time)
 
 # Meshes.Box exposes min/max corners; Rerun boxes store center + half-size:
@@ -181,7 +181,7 @@ function _box_center_halfsize(b::Meshes.Box)
 end
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, b::Meshes.Box;
-                   inject_time::Bool=true)
+                   static::Bool=false, inject_time::Bool=!static)
     Meshes.embeddim(b) == 3 ||
         throw(ArgumentError("RerunMeshesExt: only 3D Meshes.Box -> Boxes3D is supported"))
     c, h = _box_center_halfsize(b)
@@ -205,11 +205,11 @@ function _log_sphere(r, entity_path, g; inject_time::Bool)
 end
 
 Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, g::Meshes.Ball;
-          inject_time::Bool=true) =
+          static::Bool=false, inject_time::Bool=!static) =
     _log_sphere(r, entity_path, g; inject_time=inject_time)
 
 Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString, g::Meshes.Sphere;
-          inject_time::Bool=true) =
+          static::Bool=false, inject_time::Bool=!static) =
     _log_sphere(r, entity_path, g; inject_time=inject_time)
 
 end # module RerunMeshesExt

@@ -82,7 +82,8 @@ end
 
 # Color image -> Image (RGB family; gray matrices route to DepthImage).
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   img::AbstractMatrix{C}; inject_time::Bool=true) where {C<:Colorant}
+                   img::AbstractMatrix{C}; static::Bool=false,
+                   inject_time::Bool=!static) where {C<:Colorant}
     C <: AbstractGray &&
         return _log_single(r, entity_path, img, DepthImage; inject_time=inject_time)
 
@@ -101,12 +102,14 @@ end
 
 # Single-channel matrices: floats -> DepthImage, integers -> SegmentationImage.
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   img::AbstractMatrix{<:AbstractFloat}; inject_time::Bool=true)
+                   img::AbstractMatrix{<:AbstractFloat}; static::Bool=false,
+                   inject_time::Bool=!static)
     return _log_single(r, entity_path, img, DepthImage; inject_time=inject_time)
 end
 
 function Rerun.log(r::Rerun.RecordingStream, entity_path::AbstractString,
-                   img::AbstractMatrix{<:Integer}; inject_time::Bool=true)
+                   img::AbstractMatrix{<:Integer}; static::Bool=false,
+                   inject_time::Bool=!static)
     return _log_single(r, entity_path, img, SegmentationImage; inject_time=inject_time)
 end
 
